@@ -272,8 +272,14 @@
   const token    = localStorage.getItem('wavr_token')
   const address  = localStorage.getItem('wavr_address')
   const username = localStorage.getItem('wavr_username')
-  if(!token || !address) { window.location.href = 'index.html' }
-  if(!username) { window.location.href = 'register.html' }
+  // A bare `window.location.href = ...` doesn't stop the rest of this script
+  // from running before the navigation takes effect — several lines below
+  // unconditionally call .charAt() on `username`, which throws if it's null
+  // and silently kills everything after it (search, call log, signaling
+  // init...). throw() halts synchronously; the navigation above is already
+  // underway so the resulting console error is harmless.
+  if(!token || !address) { window.location.href = 'index.html'; throw new Error('Redirecting to index.html') }
+  if(!username) { window.location.href = 'register.html'; throw new Error('Redirecting to register.html') }
 
   // Profile UI
   document.getElementById('head-uname').textContent = '@'+username
@@ -446,6 +452,42 @@
   }
   loadLogs()
 
+  // ── INCOMING RINGTONE ──
+  // Synthesized via Web Audio (no audio asset shipped) — a faster on/off
+  // pulse than the outgoing ringback in call.html so it reads as "incoming"
+  // rather than "waiting". Browsers may suspend AudioContext until there's
+  // been a user gesture on this page; that's a platform autoplay-policy
+  // limit, not something we can force around.
+  let ringCtx = null, ringOsc = null, ringGain = null, ringInterval = null
+
+  function startRingtone(){
+    try {
+      ringCtx  = new (window.AudioContext || window.webkitAudioContext)()
+      ringGain = ringCtx.createGain()
+      ringGain.gain.value = 0
+      ringGain.connect(ringCtx.destination)
+
+      ringOsc = ringCtx.createOscillator()
+      ringOsc.frequency.value = 520
+      ringOsc.connect(ringGain)
+      ringOsc.start()
+
+      let on = false
+      const tick = () => {
+        on = !on
+        ringGain.gain.setTargetAtTime(on ? 0.07 : 0, ringCtx.currentTime, 0.03)
+      }
+      tick()
+      ringInterval = setInterval(tick, 900)
+    } catch(e){ console.warn('[Wavr] ringtone unavailable:', e) }
+  }
+
+  function stopRingtone(){
+    if(ringInterval){ clearInterval(ringInterval); ringInterval = null }
+    if(ringOsc){ try{ ringOsc.stop() }catch(e){} ringOsc = null }
+    if(ringCtx){ try{ ringCtx.close() }catch(e){} ringCtx = null }
+  }
+
   // ── SIGNALING ──
   initSignaling(address, token, {
     onIncomingCall: (from, fromUsername, offer, fromAvatar)=>{
@@ -469,12 +511,21 @@
       }
 
       document.getElementById('overlay').classList.add('on')
+      startRingtone()
+    },
+    // Caller gave up / hung up while this side was still ringing — without this,
+    // the incoming overlay and ringtone would stay stuck on-screen indefinitely.
+    onCallEnded: ()=>{
+      stopRingtone()
+      document.getElementById('overlay').classList.remove('on')
+      sessionStorage.clear()
     }
   })
 
-  function acceptCall() { window.location.href = 'call.html' }
+  function acceptCall() { stopRingtone(); window.location.href = 'call.html' }
 
   async function declineCall(){
+    stopRingtone()
     document.getElementById('overlay').classList.remove('on')
     const peerAddr = sessionStorage.getItem('call_peer_address')
     signalingDecline(peerAddr)

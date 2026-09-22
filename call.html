@@ -245,6 +245,12 @@
 <script src="js/signaling.js"></script>
 <script src="js/webrtc.js"></script>
 <script>
+// Wrapped in an IIFE so the auth-guard redirect below can actually `return`
+// and stop the script — a bare top-level script has no way to halt execution
+// after `window.location.href = ...`, so every line after it (including the
+// end-call button wiring and the WebRTC/signaling init at the bottom) would
+// otherwise still run against missing/empty data and throw partway through.
+;(function(){
   const token       = localStorage.getItem('wavr_token')
   const myAddress   = localStorage.getItem('wavr_address')
   const myUsername  = localStorage.getItem('wavr_username')
@@ -254,7 +260,10 @@
   const direction   = sessionStorage.getItem('call_direction')
   const savedOffer  = sessionStorage.getItem('call_offer')
 
-  if(!token || !myAddress || !peerAddress) window.location.href = 'app.html'
+  if(!token || !myAddress || !peerAddress){
+    window.location.href = 'app.html'
+    return
+  }
 
   // UI setup
   const callAva = document.getElementById('call-ava')
@@ -306,10 +315,52 @@
     requestAnimationFrame(drawCallWave)
   }
 
+  // ── RINGBACK TONE ──
+  // No audio existed for "waiting for the other side to answer" — synthesize
+  // a standard dual-tone ringback (440Hz + 480Hz, 2s on / 4s off) via Web
+  // Audio instead of shipping an audio file. Outgoing calls only — the
+  // incoming side rings on app.html, before the callee ever reaches this page.
+  let ringCtx = null, ringOsc1 = null, ringOsc2 = null, ringGain = null, ringInterval = null
+
+  function startRingback(){
+    try {
+      ringCtx  = new (window.AudioContext || window.webkitAudioContext)()
+      ringGain = ringCtx.createGain()
+      ringGain.gain.value = 0
+      ringGain.connect(ringCtx.destination)
+
+      ringOsc1 = ringCtx.createOscillator()
+      ringOsc1.frequency.value = 440
+      ringOsc1.connect(ringGain)
+      ringOsc1.start()
+
+      ringOsc2 = ringCtx.createOscillator()
+      ringOsc2.frequency.value = 480
+      ringOsc2.connect(ringGain)
+      ringOsc2.start()
+
+      let on = false
+      const tick = () => {
+        on = !on
+        ringGain.gain.setTargetAtTime(on ? 0.06 : 0, ringCtx.currentTime, 0.05)
+      }
+      tick()
+      ringInterval = setInterval(tick, 2000)
+    } catch(e){ console.warn('[Wavr] ringback unavailable:', e) }
+  }
+
+  function stopRingback(){
+    if(ringInterval){ clearInterval(ringInterval); ringInterval = null }
+    if(ringOsc1){ try{ ringOsc1.stop() }catch(e){} ringOsc1 = null }
+    if(ringOsc2){ try{ ringOsc2.stop() }catch(e){} ringOsc2 = null }
+    if(ringCtx){ try{ ringCtx.close() }catch(e){} ringCtx = null }
+  }
+
   // ── CONNECTED ──
   let timerSec=0, timerInterval=null, muted=false
 
   function onConnected(){
+    stopRingback()
     document.getElementById('conn-state').style.display = 'none'
     document.getElementById('live-state').classList.add('on')
     document.getElementById('qpill').classList.add('on')
@@ -401,6 +452,7 @@
   // ── END CALL ──
   async function doEnd(){
     clearCallTimeout()
+    stopRingback()
     clearInterval(timerInterval); waveRunning=false
     await logCall('completed')
     endCall()
@@ -435,6 +487,7 @@
   // 30-second timeout if peer never answers
   function startCallTimeout(){
     callTimeout = setTimeout(async () => {
+      stopRingback()
       await logCall('missed')
       showToast('No answer')
       endCall()
@@ -454,12 +507,14 @@
     },
     onCallEnded: ()=>{
       clearCallTimeout()
+      stopRingback()
       clearInterval(timerInterval); waveRunning=false
       showToast('Call ended')
       setTimeout(()=>window.location.href='app.html',1100)
     },
     onCallDeclined: async ()=>{
       clearCallTimeout()
+      stopRingback()
       await logCall('declined')
       showToast('Call declined')
       endCall()
@@ -472,6 +527,7 @@
   if(direction==='incoming' && savedOffer){
     answerCall(peerAddress, JSON.parse(savedOffer))
   } else {
+    startRingback()
     startCall(peerAddress)
     startCallTimeout()
   }
@@ -481,6 +537,7 @@
     t.className='toast'; t.innerHTML=`<div class="t-dot"></div><span>${msg}</span>`
     c.appendChild(t); setTimeout(()=>t.remove(),2200)
   }
+})()
 </script>
 <script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(e=>console.warn("SW:",e))}</script>
 </body>
