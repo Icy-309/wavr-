@@ -61,6 +61,11 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
 
   $message     = "Sign in to Wavr: $nonce";
   $sigBytes    = hex2bin($sig);
+
+  if($sigBytes === false || strlen($sigBytes) !== 64){
+    echo json_encode(['error'=>'Invalid signature format']); exit;
+  }
+
   $pubKeyBytes = base58_decode($wallet);
 
   if(!$pubKeyBytes || strlen($pubKeyBytes) !== 32){
@@ -70,7 +75,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   $valid = false;
   try {
     $valid = sodium_crypto_sign_verify_detached($sigBytes, $message, $pubKeyBytes);
-  } catch(Exception $e){
+  } catch(\Throwable $e){
     $valid = false;
   }
 

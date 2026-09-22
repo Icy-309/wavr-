@@ -1,4 +1,20 @@
 <?php
+// Every endpoint promises JSON. A stray PHP warning/notice (display_errors=On)
+// or an uncaught Error would otherwise leak raw HTML into the response and
+// break the client's response.json() with "Unexpected token" — so warnings
+// go to the log instead of stdout, and any truly uncaught throwable still
+// resolves to valid JSON.
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
+set_exception_handler(function($e){
+  error_log('[Wavr] Uncaught: ' . $e);
+  if(!headers_sent()){
+    http_response_code(500);
+    header('Content-Type: application/json');
+  }
+  echo json_encode(['error' => 'Server error']);
+});
+
 function getDB(){
   static $pdo = null;
   if($pdo) return $pdo;
