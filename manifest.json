@@ -1,0 +1,28 @@
+{
+  "name": "Wavr \u2014 Web3 Calling",
+  "short_name": "Wavr",
+  "description": "Anonymous P2P voice calls on Solana. No phone number. No email. Just your wallet.",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#F97316",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": [
+    "communication",
+    "utilities"
+  ]
+}

@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Wavr</title>
+<link rel="stylesheet" href="css/style.css"/>
+<link rel="manifest" href="manifest.json"/>
+<meta name="theme-color" content="#F97316"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Wavr"/>
+  <link rel="apple-touch-icon" href="/icons/icon-192.png"/>
+<style>
+  body{padding-bottom:calc(80px + env(safe-area-inset-bottom, 0px));min-height:100dvh}
+
+  /* avatar upload in header */
+  .profile-mini .ava-sm{transition:filter .2s}
+  .profile-mini:hover .ava-sm{filter:brightness(.7)}
+  .ava-img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+  .ava-img-md{width:100%;height:100%;object-fit:cover;border-radius:50%}
+
+  /* ── APP HEADER ── */
+  .app-head{
+    position:sticky;top:0;z-index:100;
+    background:rgba(10,10,10,.92);
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    border-bottom:1px solid var(--border);
+    padding:16px 20px;
+    animation:fadeIn .4s ease forwards;
+  }
+  .head-row{
+    max-width:460px;margin:0 auto;
+    display:flex;align-items:center;gap:12px;
+  }
+  .head-logo{font-family:var(--fd);font-size:1rem;font-weight:800;letter-spacing:-.03em;flex-shrink:0}
+  .head-logo em{color:var(--acc);font-style:normal}
+  .head-right{display:flex;align-items:center;gap:10px;margin-left:auto}
+  .profile-mini{
+    display:flex;align-items:center;gap:9px;cursor:pointer;
+    padding:6px 12px 6px 6px;border-radius:100px;
+    border:1px solid var(--border);background:var(--bg3);
+    transition:border-color .18s;
+  }
+  .profile-mini:hover{border-color:var(--acc)}
+  .profile-mini .uname{font-size:.82rem;font-weight:600}
+
+  /* ── SEARCH SECTION ── */
+  .search-section{padding:24px 0 0;animation:fadeUp .5s ease .15s both}
+  .search-label{font-family:var(--fm);font-size:.63rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:10px}
+  .search-outer{position:relative}
+  #search-res{display:none;margin-top:8px}
+  #search-res.on{display:block;animation:fadeUp .25s ease}
+
+  .result-card{
+    display:flex;align-items:center;gap:13px;
+    padding:16px;border-radius:14px;cursor:pointer;
+    background:var(--bg3);border:1px solid var(--border);
+    transition:border-color .18s;
+  }
+  .result-card:hover{border-color:var(--acc)}
+  .result-info{flex:1}
+  .result-name{font-weight:700;font-size:.95rem;margin-bottom:2px}
+  .result-addr{font-family:var(--fm);font-size:.72rem;color:var(--muted)}
+  .call-now{
+    display:flex;align-items:center;gap:6px;
+    padding:9px 16px;border-radius:8px;
+    background:var(--acc);color:#000;border:none;cursor:pointer;
+    font-family:var(--fb);font-size:.82rem;font-weight:700;
+    flex-shrink:0;transition:all .16s;
+  }
+  .call-now:hover{background:var(--acc2);transform:scale(1.03)}
+  .call-now:active{transform:scale(.97)}
+
+  .not-found{
+    padding:16px;text-align:center;
+    font-size:.83rem;color:var(--muted2);
+    background:var(--bg3);border:1px solid var(--border);border-radius:12px;
+  }
+
+  /* ── SECTION HEADER ── */
+  .sec-head{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:12px;
+  }
+  .sec-title{font-family:var(--fm);font-size:.63rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+
+  /* ── CALL LOG ── */
+  .log-section{padding-top:24px}
+  .log-item{
+    display:flex;align-items:center;gap:13px;
+    padding:13px 0;border-bottom:1px solid var(--border);
+    cursor:pointer;transition:opacity .18s;
+  }
+  .log-item:hover{opacity:.7}
+  .log-item:last-child{border-bottom:none}
+  .log-info{flex:1;min-width:0}
+  .log-name{font-weight:600;font-size:.9rem;margin-bottom:2px}
+  .log-meta{display:flex;align-items:center;gap:6px;font-size:.72rem;color:var(--muted)}
+  .log-dir{font-size:.7rem}
+  .log-dir.out{color:var(--acc)}
+  .log-dir.in {color:var(--green)}
+  .log-dir.miss{color:var(--danger)}
+  .log-time{font-family:var(--fm);font-size:.68rem;color:var(--muted);white-space:nowrap;flex-shrink:0}
+
+  /* empty state */
+  .empty{text-align:center;padding:48px 20px}
+  .empty-icon{font-size:2.8rem;opacity:.25;margin-bottom:14px}
+  .empty-text{font-size:.85rem;color:var(--muted);line-height:1.5}
+
+  /* ── BOTTOM NAV ── */
+  .bot-nav{
+    position:fixed;bottom:0;left:0;right:0;
+    background:rgba(10,10,10,.95);backdrop-filter:blur(20px);
+    border-top:1px solid var(--border);
+    padding:12px 20px calc(12px + env(safe-area-inset-bottom, 0px));z-index:200;
+    animation:fadeIn .4s ease forwards;
+  }
+  .bot-row{max-width:460px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+  .bot-logout{
+    background:none;border:none;color:var(--muted);
+    font-family:var(--fm);font-size:.68rem;cursor:pointer;
+    letter-spacing:.05em;transition:color .18s;
+  }
+  .bot-logout:hover{color:var(--danger)}
+  .status-dot{display:flex;align-items:center;gap:6px;font-family:var(--fm);font-size:.68rem;color:var(--muted)}
+  .sdot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:wave 2s ease-in-out infinite}
+
+  /* photo upload */
+  .ava-upload-wrap{position:relative;cursor:pointer;display:inline-block}
+  .ava-upload-wrap:hover .ava-upload-overlay{opacity:1}
+  .ava-upload-overlay{
+    position:absolute;inset:0;border-radius:50%;
+    background:rgba(0,0,0,.6);display:flex;align-items:center;
+    justify-content:center;opacity:0;transition:opacity .2s;
+    font-size:.55rem;color:#fff;font-family:var(--fm);letter-spacing:.06em;
+    text-align:center;flex-direction:column;gap:3px;
+  }
+  .ava-upload-overlay svg{display:block;margin:0 auto}
+  #avatar-input{display:none}
+  .upload-ring{border-color:var(--acc)!important}
+  .ava-img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+
+  /* privacy pill */
+  .privacy-banner{
+    display:flex;align-items:center;gap:8px;
+    padding:10px 14px;border-radius:10px;
+    background:rgba(249,115,22,.06);border:1px solid rgba(249,115,22,.15);
+    font-size:.72rem;color:var(--muted2);font-family:var(--fm);
+    margin-bottom:0;animation:fadeUp .5s ease .3s both;
+    letter-spacing:.02em;
+  }
+  .privacy-banner svg{color:var(--acc);flex-shrink:0}
+</style>
+</head>
+<body>
+
+<!-- sticky header -->
+<header class="app-head">
+  <div class="head-row">
+    <div class="head-logo">wav<em>r</em></div>
+    <div class="head-right">
+      <div class="badge badge-o"><div class="dot"></div> Anonymous</div>
+      <div class="profile-mini" id="profile-pill" onclick="document.getElementById('avatar-input').click()" title="Change photo" style="cursor:pointer">
+        <div class="ava ava-sm" id="head-ava">?</div>
+        <span class="uname" id="head-uname">@—</span>
+      </div>
+      <input type="file" id="avatar-input" accept="image/*" style="display:none"/>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- PRIVACY BANNER -->
+  <div class="privacy-banner anim-stagger-1">
+    <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+    No real name · No email · Wallet identity only · P2P encrypted
+  </div>
+
+  <!-- SEARCH -->
+  <div class="search-section">
+    <span class="search-label">Call by @handle</span>
+    <div class="search-outer fw">
+      <div class="fi">
+        <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/></svg>
+      </div>
+      <input class="field" id="search" type="search" placeholder="Search anonymous handle…" autocomplete="off"/>
+    </div>
+    <div id="search-res">
+      <div class="result-card" id="res-card" style="display:none">
+        <div class="ava ava-md" id="res-ava">?</div>
+        <div class="result-info">
+          <div class="result-name" id="res-name">—</div>
+          <div class="result-addr" id="res-addr">—</div>
+        </div>
+        <button class="call-now" id="call-btn">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.948V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 7V5z"/></svg>
+          Call
+        </button>
+      </div>
+      <div class="not-found" id="res-empty" style="display:none">No user with that handle</div>
+    </div>
+  </div>
+
+  <hr class="div"/>
+
+  <!-- CALL LOG -->
+  <div class="log-section" id="log-section">
+    <div class="sec-head">
+      <span class="sec-title">Call History</span>
+    </div>
+    <div id="log-list">
+      <div class="empty" style="animation:fadeIn .6s ease .5s both">
+        <div class="empty-icon">📞</div>
+        <div class="empty-text">No calls yet.<br/>Find anyone by their @handle. No names needed.</div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- bottom bar -->
+<div class="bot-nav">
+  <div class="bot-row">
+    <div class="status-dot"><div class="sdot"></div>Private · P2P</div>
+    <button class="bot-logout" onclick="logout()">Disconnect</button>
+  </div>
+</div>
+
+<!-- incoming call -->
+<div id="overlay">
+  <div class="ov-card">
+    <div class="ring-wrap" style="display:inline-block">
+      <div class="ava ava-lg" id="inc-ava">?</div>
+    </div>
+    <h3 id="inc-name">Someone</h3>
+    <p>Incoming call on Wavr</p>
+    <div class="ov-btns">
+      <div>
+        <button class="btn-round red" onclick="declineCall()">
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z"/></svg>
+        </button>
+        <div class="ov-lbl">Decline</div>
+      </div>
+      <div>
+        <button class="btn-round" style="background:rgba(34,197,94,.15);border-color:var(--green);color:var(--green);width:62px;height:62px;font-size:1.3rem" onclick="acceptCall()">
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.948V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 7V5z"/></svg>
+        </button>
+        <div class="ov-lbl">Answer</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="js/signaling.js"></script>
+<script src="js/webrtc.js"></script>
+<script>
+  // Auth guard
+  const token    = localStorage.getItem('wavr_token')
+  const address  = localStorage.getItem('wavr_address')
+  const username = localStorage.getItem('wavr_username')
+  if(!token || !address) { window.location.href = 'index.html' }
+  if(!username) { window.location.href = 'register.html' }
+
+  // Profile UI
+  document.getElementById('head-uname').textContent = '@'+username
+  const headAva = document.getElementById('head-ava')
+  headAva.textContent = username.charAt(0).toUpperCase()
+
+  function setAvatarImg(el, url){
+    el.textContent = ''
+    const img = document.createElement('img')
+    img.src = url + (url.includes('?') ? '&t=' : '?t=') + Date.now()
+    img.className = 'ava-img'
+    img.onerror = () => { el.innerHTML = ''; el.textContent = username.charAt(0).toUpperCase() }
+    el.appendChild(img)
+  }
+
+  // Load cached avatar instantly
+  const savedAvatar = localStorage.getItem('wavr_avatar')
+  if(savedAvatar) setAvatarImg(headAva, savedAvatar)
+
+  // Refresh from server
+  ;(async()=>{
+    try {
+      const r = await fetch('/api/user.php?username='+encodeURIComponent(username))
+      const d = await r.json()
+      if(d.found && d.user.avatar_url){
+        localStorage.setItem('wavr_avatar', d.user.avatar_url)
+        setAvatarImg(headAva, d.user.avatar_url)
+      }
+    } catch(e){}
+  })()
+
+  // ── PHOTO UPLOAD ──
+  document.getElementById('avatar-input').addEventListener('change', async function(){
+    const file = this.files[0]
+    if(!file) return
+    if(!file.type.startsWith('image/')){ toast('err','Select an image file'); return }
+    if(file.size > 10 * 1024 * 1024){ toast('err','Max 10MB'); return }
+
+    headAva.innerHTML = '<div class="spin" style="width:16px;height:16px;margin:auto"></div>'
+
+    const base64 = await resizeImage(file, 300)
+
+    try {
+      const r = await fetch('/api/upload.php', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+        body: JSON.stringify({ image: base64 })
+      })
+      const d = await r.json()
+      if(d.success){
+        localStorage.setItem('wavr_avatar', d.url)
+        setAvatarImg(headAva, d.url)
+        toast('ok','Photo updated')
+      } else {
+        headAva.innerHTML = ''
+        headAva.textContent = username.charAt(0).toUpperCase()
+        toast('err', d.error || 'Upload failed')
+      }
+    } catch(e){
+      headAva.innerHTML = ''
+      headAva.textContent = username.charAt(0).toUpperCase()
+      toast('err','Upload failed')
+    }
+    this.value = ''
+  })
+
+  function resizeImage(file, size){
+    return new Promise(resolve => {
+      const reader = new FileReader()
+      reader.onload = e => {
+        const img = new Image()
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          canvas.width = size; canvas.height = size
+          const ctx = canvas.getContext('2d')
+          const s = Math.min(img.width, img.height)
+          const ox = (img.width - s) / 2, oy = (img.height - s) / 2
+          ctx.drawImage(img, ox, oy, s, s, 0, 0, size, size)
+          resolve(canvas.toDataURL('image/jpeg', 0.88))
+        }
+        img.src = e.target.result
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  // GSAP
+  gsap.from('.search-section', { y: 24, opacity: 0, duration: .6, ease: 'expo.out', delay: .1 })
+  gsap.from('.log-section', { y: 24, opacity: 0, duration: .6, ease: 'expo.out', delay: .2 })
+
+  // ── SEARCH ──
+  let searchTimer, currentPeer = null
+  const searchEl   = document.getElementById('search')
+  const searchRes  = document.getElementById('search-res')
+  const resCard    = document.getElementById('res-card')
+  const resEmpty   = document.getElementById('res-empty')
+
+  searchEl.addEventListener('input', ()=>{
+    const v = searchEl.value.trim().replace(/@/g, '')
+    if(!v){ searchRes.classList.remove('on'); return }
+    clearTimeout(searchTimer)
+    searchTimer = setTimeout(async ()=>{
+      try {
+        const r = await fetch('/api/user.php?username='+encodeURIComponent(v))
+        const d = await r.json()
+        searchRes.classList.add('on')
+        if(d.found){
+          currentPeer = d.user
+          document.getElementById('res-name').textContent = '@'+d.user.username
+          document.getElementById('res-addr').textContent = d.user.wallet_address.slice(0,6)+'…'+d.user.wallet_address.slice(-4)
+          const resAva = document.getElementById('res-ava')
+          resAva.textContent = ''
+          if(d.user.avatar_url){
+            const img = document.createElement('img')
+            img.src = d.user.avatar_url; img.className = 'ava-img'
+            img.onerror = () => { resAva.innerHTML = ''; resAva.textContent = d.user.username.charAt(0).toUpperCase() }
+            resAva.appendChild(img)
+          } else {
+            resAva.textContent = d.user.username.charAt(0).toUpperCase()
+          }
+          resCard.style.display  = 'flex'
+          resEmpty.style.display = 'none'
+        } else {
+          resCard.style.display  = 'none'
+          resEmpty.style.display = 'block'
+        }
+      } catch(e){}
+    }, 380)
+  })
+
+  document.getElementById('call-btn').addEventListener('click', ()=>{
+    if(!currentPeer) return
+    goCall(currentPeer.wallet_address, currentPeer.username, currentPeer.avatar_url || '')
+  })
+
+  function goCall(addr, uname, avatarUrl){
+    sessionStorage.setItem('call_peer_address',  addr)
+    sessionStorage.setItem('call_peer_username', uname || '')
+    sessionStorage.setItem('call_peer_avatar',   avatarUrl || '')
+    sessionStorage.setItem('call_direction',     'outgoing')
+    window.location.href = 'call.html'
+  }
+
+  // ── LOAD CALL LOGS ──
+  async function loadLogs(){
+    try {
+      const r = await fetch('/api/calls.php',{ headers:{'Authorization':'Bearer '+token} })
+      const d = await r.json()
+      const list = document.getElementById('log-list')
+      if(!d.calls || !d.calls.length) return
+
+      list.innerHTML = d.calls.map((c,i)=>{
+        const isCaller  = c.caller_address === address
+        const peer      = isCaller ? c.callee_username : c.caller_username
+        const dirClass  = c.status === 'missed' ? 'miss' : isCaller ? 'out' : 'in'
+        const dirLabel  = c.status === 'missed' ? '↙ Missed' : isCaller ? '↗ Outgoing' : '↙ Incoming'
+        const peerAddr  = isCaller ? c.callee_address : c.caller_address
+        const when      = c.started_at ? new Date(c.started_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—'
+        return `<div class="log-item" style="animation:fadeUp .4s ease ${i*.06}s both"
+          onclick="goCall('${peerAddr}','${peer||''}','')">
+          <div class="ava ava-sm">${(peer||'?').charAt(0).toUpperCase()}</div>
+          <div class="log-info">
+            <div class="log-name">@${peer||'Unknown'}</div>
+            <div class="log-meta"><span class="log-dir ${dirClass}">${dirLabel}</span></div>
+          </div>
+          <div class="log-time">${when}</div>
+        </div>`
+      }).join('')
+    } catch(e){}
+  }
+  loadLogs()
+
+  // ── SIGNALING ──
+  initSignaling(address, token, {
+    onIncomingCall: (from, fromUsername, offer, fromAvatar)=>{
+      sessionStorage.setItem('call_peer_address',  from)
+      sessionStorage.setItem('call_peer_username', fromUsername || from.slice(0,6))
+      sessionStorage.setItem('call_peer_avatar',   fromAvatar || '')
+      sessionStorage.setItem('call_offer',         JSON.stringify(offer))
+      sessionStorage.setItem('call_direction',     'incoming')
+
+      const displayName = fromUsername || from.slice(0,6)
+      document.getElementById('inc-name').textContent = '@'+displayName
+
+      const incAva = document.getElementById('inc-ava')
+      incAva.textContent = displayName.charAt(0).toUpperCase()
+      if(fromAvatar){
+        const img = document.createElement('img')
+        img.src = fromAvatar; img.className = 'ava-img'
+        img.onerror = () => img.remove()
+        incAva.textContent = ''
+        incAva.appendChild(img)
+      }
+
+      document.getElementById('overlay').classList.add('on')
+    }
+  })
+
+  function acceptCall() { window.location.href = 'call.html' }
+
+  async function declineCall(){
+    document.getElementById('overlay').classList.remove('on')
+    const peerAddr = sessionStorage.getItem('call_peer_address')
+    signalingDecline(peerAddr)
+    // Log missed call — calls.php sets caller=me(session), callee=peerAddr(the one who called me)
+    // This records: I received a call from peerAddr and didn't answer
+    try {
+      await fetch('/api/calls.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ callee_address: peerAddr, status: 'missed', duration: 0 })
+      })
+    } catch(e){}
+    sessionStorage.clear()
+  }
+
+  function logout(){
+    localStorage.clear(); sessionStorage.clear()
+    window.location.href = 'index.html'
+  }
+
+  function toast(type,msg){
+    const c=document.getElementById('toasts'),t=document.createElement('div')
+    t.className='toast '+type
+    t.innerHTML=`<div class="t-dot"></div><span>${msg}</span>`
+    c.appendChild(t); setTimeout(()=>t.remove(),3000)
+  }
+</script>
+<script src="js/install.js"></script>
+<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(e=>console.warn("SW:",e))}</script>
+</body>
+</html>

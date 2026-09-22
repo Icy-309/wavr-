@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Wavr — Claim Handle</title>
+<meta name="theme-color" content="#F97316"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Wavr"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png"/>
+<link rel="stylesheet" href="css/style.css"/>
+<link rel="manifest" href="manifest.json"/>
+<style>
+  body{min-height:100dvh;display:flex;flex-direction:column}
+
+  /* ── REGISTER LAYOUT: EDITORIAL SPLIT ── */
+  .reg-page{flex:1;display:grid;grid-template-rows:auto 1fr;min-height:100dvh}
+
+  /* top accent bar */
+  .reg-bar{
+    height:3px;
+    background:linear-gradient(90deg, var(--acc) 0%, transparent 100%);
+    animation:wipe .8s ease forwards;
+  }
+  @keyframes wipe{from{transform:scaleX(0);transform-origin:left}to{transform:scaleX(1);transform-origin:left}}
+
+  .reg-nav{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:22px 28px;border-bottom:1px solid var(--border);
+    animation:fadeIn .5s ease forwards;
+  }
+  .logo{font-family:var(--fd);font-size:1.05rem;font-weight:800;letter-spacing:-.03em}
+  .logo em{color:var(--acc);font-style:normal}
+
+  /* big "@" accent */
+  .at-mark{
+    position:fixed;right:-20px;top:50%;transform:translateY(-50%);
+    font-family:var(--fd);font-size:clamp(120px,30vw,220px);
+    font-weight:900;color:var(--acc);opacity:.04;
+    pointer-events:none;line-height:1;user-select:none;
+    animation:fadeIn 1s ease .3s both;
+  }
+
+  /* form area */
+  .reg-body{
+    display:flex;align-items:center;justify-content:center;
+    padding:40px 20px;position:relative;overflow:hidden;
+  }
+
+  .reg-card{
+    width:100%;max-width:400px;position:relative;z-index:2;
+  }
+
+  .reg-step{
+    font-family:var(--fm);font-size:.65rem;color:var(--muted);
+    letter-spacing:.12em;text-transform:uppercase;
+    margin-bottom:10px;
+    animation:fadeIn .6s ease .2s both;
+  }
+  .reg-step span{color:var(--acc)}
+
+  .reg-title{
+    font-family:var(--fd);font-size:clamp(1.6rem,6vw,2rem);
+    font-weight:800;letter-spacing:-.04em;line-height:1.15;
+    margin-bottom:8px;
+    animation:fadeUp .6s ease .3s both;
+  }
+  .reg-sub{
+    font-size:.85rem;color:var(--muted2);line-height:1.55;
+    margin-bottom:32px;
+    animation:fadeUp .6s ease .4s both;
+  }
+
+  /* username input */
+  .uname-wrap{
+    position:relative;margin-bottom:12px;
+    animation:fadeUp .6s ease .5s both;
+  }
+  .uname-prefix{
+    position:absolute;left:14px;top:50%;transform:translateY(-50%);
+    font-family:var(--fd);font-size:1.1rem;font-weight:700;
+    color:var(--acc);pointer-events:none;z-index:2;
+  }
+  .uname-field{
+    width:100%;background:var(--bg3);border:1px solid var(--border);
+    border-radius:12px;color:var(--white);
+    font-family:var(--fd);font-size:1rem;font-weight:600;
+    padding:16px 48px 16px 38px;
+    outline:none;transition:border-color .18s,box-shadow .18s;
+    letter-spacing:-.01em;
+  }
+  .uname-field:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--a10)}
+  .uname-field::placeholder{color:var(--muted);font-weight:400}
+  .uname-status{
+    position:absolute;right:14px;top:50%;transform:translateY(-50%);
+    font-size:.85rem;
+  }
+
+  /* rules */
+  .rules{display:flex;flex-direction:column;gap:7px;margin-bottom:28px;animation:fadeUp .6s ease .55s both}
+  .rule{display:flex;align-items:center;gap:9px;font-size:.78rem;color:var(--muted);transition:color .2s}
+  .rule.ok{color:var(--green)}
+  .rule.fail{color:var(--danger)}
+  .rule-ico{width:16px;height:16px;border-radius:50%;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:.6rem;transition:all .2s}
+  .rule.ok .rule-ico{background:var(--green);border-color:var(--green);color:#000}
+  .rule.fail .rule-ico{background:var(--danger);border-color:var(--danger);color:#fff}
+
+  /* submit btn */
+  .reg-submit{animation:fadeUp .6s ease .65s both}
+
+  /* wallet display */
+  .wallet-pill{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:5px 12px 5px 8px;
+    background:var(--bg3);border:1px solid var(--border);border-radius:100px;
+    font-size:.72rem;font-family:var(--fm);color:var(--muted2);
+  }
+  .wallet-pill span{
+    width:6px;height:6px;border-radius:50%;background:var(--green);
+    display:inline-block;
+  }
+</style>
+</head>
+<body>
+<div class="reg-page">
+  <div class="reg-bar"></div>
+
+  <!-- nav -->
+  <div>
+    <nav class="reg-nav">
+      <div class="logo">wav<em>r</em></div>
+      <div class="wallet-pill" id="wallet-pill">
+        <span></span>
+        <span id="addr-display">—</span>
+      </div>
+    </nav>
+  </div>
+
+  <!-- big @ watermark -->
+  <div class="at-mark">@</div>
+
+  <!-- form -->
+  <div class="reg-body">
+    <div class="reg-card">
+      <div class="reg-step">Step <span>02</span> of 02 — Identity</div>
+      <h1 class="reg-title">Your anonymous<br/>identity</h1>
+      <p class="reg-sub">No real name. No email. Your @handle is the only identity Wavr knows — and the only one anyone else sees.</p>
+
+      <div class="uname-wrap">
+        <div class="uname-prefix">@</div>
+        <input
+          class="uname-field" id="uname" type="text"
+          placeholder="yourname" maxlength="20"
+          autocomplete="off" autocapitalize="off" spellcheck="false"
+        />
+        <div class="uname-status" id="uname-status"></div>
+      </div>
+
+      <div class="rules">
+        <div class="rule" id="r-len">
+          <div class="rule-ico">·</div>
+          3–20 characters, no spaces
+        </div>
+        <div class="rule" id="r-char">
+          <div class="rule-ico">·</div>
+          Letters, numbers and underscores only
+        </div>
+        <div class="rule" id="r-avail">
+          <div class="rule-ico">·</div>
+          Available
+        </div>
+      </div>
+
+      <div class="reg-submit">
+        <button class="btn btn-fill" id="reg-btn" disabled>
+          <span class="btn-text">Claim @<span id="btn-uname">handle</span></span>
+          <span class="btn-spin spin" style="display:none"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+  // Auth guard
+  const token = localStorage.getItem('wavr_token')
+  const address = localStorage.getItem('wavr_address')
+  if(!token || !address) window.location.href = 'index.html'
+  // Already registered — skip straight to app
+  const existingUsername = localStorage.getItem('wavr_username')
+  if(existingUsername) window.location.href = 'app.html'
+
+  // Display address
+  if(address) document.getElementById('addr-display').textContent = address.slice(0,4)+'…'+address.slice(-4)
+
+  // GSAP entrance
+  gsap.from('.at-mark', { x: 80, opacity: 0, duration: 1.2, ease: 'expo.out', delay: .15 })
+
+  // Input logic
+  const uname = document.getElementById('uname')
+  const btn   = document.getElementById('reg-btn')
+  let debounce, canSubmit = false
+
+  function setRule(id, state){ // 'ok' | 'fail' | ''
+    const r = document.getElementById(id)
+    r.className = 'rule' + (state ? ' '+state : '')
+    r.querySelector('.rule-ico').textContent = state === 'ok' ? '✓' : state === 'fail' ? '✗' : '·'
+  }
+
+  uname.addEventListener('input', ()=>{
+    const v = uname.value.toLowerCase().replace(/[^a-z0-9_]/g,'')
+    uname.value = v
+    document.getElementById('btn-uname').textContent = v || 'handle'
+    document.getElementById('uname-status').textContent = ''
+    canSubmit = false
+    btn.disabled = true
+
+    const lenOk  = v.length >= 3 && v.length <= 20
+    const charOk = v.length > 0 && /^[a-z0-9_]+$/.test(v)
+    setRule('r-len',  v.length > 0 ? (lenOk  ? 'ok' : 'fail') : '')
+    setRule('r-char', v.length > 0 ? (charOk ? 'ok' : 'fail') : '')
+    setRule('r-avail','')
+
+    if(lenOk && charOk){
+      clearTimeout(debounce)
+      document.getElementById('uname-status').innerHTML = '<div class="spin"></div>'
+      debounce = setTimeout(async ()=>{
+        try {
+          const res = await fetch('/api/user.php?check='+encodeURIComponent(v))
+          const d   = await res.json()
+          setRule('r-avail', d.available ? 'ok' : 'fail')
+          document.querySelector('#r-avail .rule-ico').nextSibling.textContent = d.available ? ' Available' : ' Already taken'
+          document.getElementById('uname-status').textContent = d.available ? '✓' : '✗'
+          document.getElementById('uname-status').style.color = d.available ? 'var(--green)' : 'var(--danger)'
+          canSubmit = d.available
+          btn.disabled = !canSubmit
+        } catch(e){ document.getElementById('uname-status').textContent = '' }
+      }, 450)
+    }
+  })
+
+  btn.addEventListener('click', async ()=>{
+    if(!canSubmit) return
+    btn.disabled = true
+    btn.querySelector('.btn-text').style.display = 'none'
+    btn.querySelector('.btn-spin').style.display = 'inline-block'
+
+    try {
+      const res = await fetch('/api/user.php',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+        body: JSON.stringify({ username: uname.value })
+      })
+      const d = await res.json()
+      if(d.success){
+        localStorage.setItem('wavr_username', uname.value)
+        toast('ok','Handle claimed! Entering Wavr…')
+        gsap.to('.reg-card',{ opacity:0, y:-20, duration:.4, delay:.5, onComplete:()=> window.location.href='app.html' })
+      } else {
+        toast('err', d.error || 'Failed')
+        btn.disabled = false
+        btn.querySelector('.btn-text').style.display = 'flex'
+        btn.querySelector('.btn-spin').style.display = 'none'
+      }
+    } catch(e){
+      toast('err','Network error')
+      btn.disabled = false
+    }
+  })
+
+  function toast(type, msg){
+    const c = document.getElementById('toasts')
+    const t = document.createElement('div')
+    t.className = 'toast '+type
+    t.innerHTML = `<div class="t-dot"></div><span>${msg}</span>`
+    c.appendChild(t)
+    setTimeout(()=>t.remove(), 3200)
+  }
+</script>
+<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(e=>console.warn("SW:",e))}</script>
+</body>
+</html>
