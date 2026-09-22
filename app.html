@@ -258,6 +258,13 @@
 <div id="toasts"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+  // TEMPORARY — Cloudflare quick-tunnel testing config. Site and signaling server
+  // are on separate trycloudflare.com subdomains, so the default same-hostname
+  // guess in signaling.js doesn't apply. Remove/replace when deploying for real.
+  window.WAVR_SIGNAL_HOST = 'css-choir-western-cold.trycloudflare.com'
+  window.WAVR_SIGNAL_PORT = 443
+</script>
 <script src="js/signaling.js"></script>
 <script src="js/webrtc.js"></script>
 <script>
