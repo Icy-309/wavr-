@@ -263,6 +263,11 @@ hr.div { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
   /* Bottom padding includes iPhone home indicator */
   padding: 20px 20px calc(28px + var(--sab));
   width: 100%; max-width: 480px;
+  /* Cap height and scroll internally instead of relying on the sheet always
+     fitting a short viewport — on a shorter screen the content was extending
+     past the fold with no way to reach it (position:fixed isn't affected by
+     page scroll, so it could end up unreachable rather than just cut off). */
+  max-height: 85dvh; overflow-y: auto; overscroll-behavior: contain;
   animation: slideUp .3s cubic-bezier(.4,0,.2,1);
 }
 .whandle { width: 36px; height: 3px; border-radius: 2px; background: var(--bord2); margin: 0 auto 22px; }
