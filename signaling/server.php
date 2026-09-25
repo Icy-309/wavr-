@@ -6,18 +6,22 @@
  * Deploy on VPS with: supervisor or screen
  */
 
-// cboden/ratchet is unmaintained and predates PHP 8.4's nullable-type deprecations —
-// silence those so real errors aren't buried in noise.
-error_reporting(E_ALL & ~E_DEPRECATED);
-
 require __DIR__ . '/../vendor/autoload.php';
 require __DIR__ . '/../api/db.php';
+
+// cboden/ratchet is unmaintained and predates PHP 8.4's nullable-type
+// deprecations — silence those so real errors aren't buried in noise.
+// Must come after requiring db.php, which sets error_reporting(E_ALL)
+// itself (for the API scripts' own purposes) and would otherwise clobber this.
+error_reporting(E_ALL & ~E_DEPRECATED);
 
 use Ratchet\MessageComponentInterface;
 use Ratchet\ConnectionInterface;
 use Ratchet\Server\IoServer;
 use Ratchet\Http\HttpServer;
 use Ratchet\WebSocket\WsServer;
+use React\EventLoop\Loop;
+use React\Socket\Server as SocketServer;
 
 class WavrSignaling implements MessageComponentInterface {
   protected $clients; // address => connection
@@ -45,20 +49,25 @@ class WavrSignaling implements MessageComponentInterface {
       return;
     }
 
-    // Verify token matches the claimed address and hasn't expired
+    // Verify token matches the claimed address and hasn't expired.
+    // This connection is reused for the server's entire uptime, so if it's
+    // gone stale (pooler idle timeout, network blip) every auth check would
+    // fail forever with no way to recover — reconnect once and retry before
+    // giving up, instead of just logging and rejecting.
     try {
-      $stmt = $this->pdo->prepare(
-        "SELECT wallet_address FROM sessions
-         WHERE token = ? AND wallet_address = ? AND expires_at > NOW()
-         LIMIT 1"
-      );
-      $stmt->execute([$token, $address]);
-      $row = $stmt->fetch();
-    } catch(\Exception $e) {
-      echo "[Wavr] DB error on auth: ".$e->getMessage()."\n";
-      $conn->send(json_encode(['type'=>'error','message'=>'Auth failed']));
-      $conn->close();
-      return;
+      $row = $this->authQuery($token, $address);
+    } catch(\Throwable $e) {
+      echo "[Wavr] DB error on auth (".$e->getMessage()."), reconnecting...\n";
+      try {
+        $this->pdo = getDB(true);
+        $row = $this->authQuery($token, $address);
+        echo "[Wavr] Reconnected OK\n";
+      } catch(\Throwable $e2) {
+        echo "[Wavr] DB reconnect failed: ".$e2->getMessage()."\n";
+        $conn->send(json_encode(['type'=>'error','message'=>'Auth failed']));
+        $conn->close();
+        return;
+      }
     }
 
     if(!$row){
@@ -127,14 +136,27 @@ class WavrSignaling implements MessageComponentInterface {
     // If target is offline, silently drop — client handles timeout
   }
 
-  // Re-ping DB to keep connection alive (call periodically via timer if needed)
-  protected function pingDB(){
+  // Periodic keepalive (wired up below via a loop timer) so an idle
+  // connection gets caught and refreshed proactively, rather than only
+  // discovering it's dead the next time someone tries to log in.
+  public function pingDB(){
     try {
       $this->pdo->query('SELECT 1');
-    } catch(\Exception $e){
-      echo "[Wavr] DB ping failed, reconnecting...\n";
-      try { $this->pdo = getDB(); } catch(\Exception $e2){}
+    } catch(\Throwable $e){
+      echo "[Wavr] DB keepalive ping failed, reconnecting...\n";
+      try { $this->pdo = getDB(true); echo "[Wavr] Reconnected OK\n"; }
+      catch(\Throwable $e2){ echo "[Wavr] Reconnect failed: ".$e2->getMessage()."\n"; }
     }
+  }
+
+  protected function authQuery($token, $address){
+    $stmt = $this->pdo->prepare(
+      "SELECT wallet_address FROM sessions
+       WHERE token = ? AND wallet_address = ? AND expires_at > NOW()
+       LIMIT 1"
+    );
+    $stmt->execute([$token, $address]);
+    return $stmt->fetch();
   }
 
   public function onClose(ConnectionInterface $conn){
@@ -152,8 +174,14 @@ class WavrSignaling implements MessageComponentInterface {
 
 $port = isset($argv[1]) ? (int)$argv[1] : 8080;
 echo "[Wavr] Starting on port $port...\n";
-$server = IoServer::factory(
-  new HttpServer(new WsServer(new WavrSignaling())),
-  $port
-);
+
+// Built manually (rather than via IoServer::factory(), which always creates
+// its own internal loop with no way to get a reference to it) so the DB
+// keepalive timer below runs on the same loop actually driving the server.
+$loop = Loop::get();
+$signaling = new WavrSignaling();
+$loop->addPeriodicTimer(60, fn() => $signaling->pingDB());
+
+$socket = new SocketServer('0.0.0.0:' . $port, $loop);
+$server = new IoServer(new HttpServer(new WsServer($signaling)), $socket, $loop);
 $server->run();
