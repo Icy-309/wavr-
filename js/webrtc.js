@@ -206,16 +206,32 @@ async function createPC(targetAddress){
 }
 
 async function drainIceQueue(){
+  if(signalingCallbacks.onDebug && iceQueue.length){
+    signalingCallbacks.onDebug(`draining ${iceQueue.length} queued remote ICE candidate(s)`)
+  }
   while(iceQueue.length){
-    try { await pc.addIceCandidate(new RTCIceCandidate(iceQueue.shift())) } catch(e){}
+    try { await pc.addIceCandidate(new RTCIceCandidate(iceQueue.shift())) }
+    catch(e){ if(signalingCallbacks.onDebug) signalingCallbacks.onDebug('addIceCandidate (queued) failed: ' + e.message) }
   }
 }
 
+let remoteIceCount = 0
+
 async function handleRemoteIce(candidate){
+  // This is the missing half of the picture from candidate gathering alone
+  // — it shows whether candidates from the OTHER side are arriving here at
+  // all, which local-only gathering logs can't tell us.
   if(remoteDescSet){
-    try { await pc.addIceCandidate(new RTCIceCandidate(candidate)) } catch(e){}
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate))
+      remoteIceCount++
+      if(signalingCallbacks.onDebug) signalingCallbacks.onDebug(`remote ICE candidate #${remoteIceCount} added (type=${candidate.type || '?'})`)
+    } catch(e){
+      if(signalingCallbacks.onDebug) signalingCallbacks.onDebug('addIceCandidate failed: ' + e.message)
+    }
   } else {
     iceQueue.push(candidate)
+    if(signalingCallbacks.onDebug) signalingCallbacks.onDebug('remote ICE candidate queued (no remote description yet)')
   }
 }
 

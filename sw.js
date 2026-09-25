@@ -1,4 +1,4 @@
-const CACHE  = 'wavr-v13'
+const CACHE  = 'wavr-v14'
 const STATIC = [
   '/index.html',
   '/register.html',
