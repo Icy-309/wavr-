@@ -84,7 +84,15 @@ async function getIceServers(){
 }
 
 async function getAudio(){
-  localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+  // Explicit rather than relying on `audio: true`'s implicit defaults, which
+  // aren't applied identically across every browser — echo cancellation in
+  // particular matters here since testing on open speakers (no headphones)
+  // otherwise picks the remote audio back up through the mic and sends it
+  // right back, sounding like the other person "talking back to you".
+  localStream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    video: false
+  })
   const tracks = localStream.getAudioTracks()
   if(signalingCallbacks.onDebug){
     if(tracks.length === 0){
