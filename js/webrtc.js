@@ -49,8 +49,23 @@ async function createPC(targetAddress){
   const iceServers = await getIceServers()
   pc            = new RTCPeerConnection(iceServers)
 
+  let candidateCounts = { host: 0, srflx: 0, relay: 0, other: 0 }
+
   pc.onicecandidate = (e) => {
-    if(e.candidate) sendIce(targetAddress, e.candidate)
+    if(e.candidate){
+      sendIce(targetAddress, e.candidate)
+      const type = e.candidate.type || 'other'
+      candidateCounts[type] = (candidateCounts[type] || 0) + 1
+      if(signalingCallbacks.onDebug) signalingCallbacks.onDebug(`ICE candidate gathered: ${type} (host:${candidateCounts.host} srflx:${candidateCounts.srflx} relay:${candidateCounts.relay})`)
+    }
+  }
+
+  pc.oniceconnectionstatechange = () => {
+    if(signalingCallbacks.onDebug) signalingCallbacks.onDebug('iceConnectionState: ' + pc.iceConnectionState)
+  }
+
+  pc.onicegatheringstatechange = () => {
+    if(signalingCallbacks.onDebug) signalingCallbacks.onDebug('iceGatheringState: ' + pc.iceGatheringState)
   }
 
   pc.ontrack = (e) => {
@@ -81,6 +96,7 @@ async function createPC(targetAddress){
   pc.onconnectionstatechange = () => {
     const state = pc.connectionState
     console.log('[Wavr] PC state:', state)
+    if(signalingCallbacks.onDebug) signalingCallbacks.onDebug('connectionState: ' + state)
 
     if(state === 'connected'){
       // Clear any pending disconnect grace timer
