@@ -7,6 +7,24 @@ let iceQueue      = []
 let remoteDescSet = false
 let disconnectTimer = null   // grace period before treating disconnected as ended
 let statsInterval   = null
+let wakeLock        = null
+
+// If the screen locks/sleeps mid-call, mobile browsers can throttle or
+// suspend the tab enough to stop the mic track from actually sending RTP,
+// even though the WebRTC connection itself stays reported as "connected" —
+// this keeps the screen awake for the duration of the call so that can't
+// happen. No-ops harmlessly wherever the Wake Lock API isn't supported.
+async function acquireWakeLock(){
+  try {
+    if('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen')
+  } catch(e){
+    console.warn('[Wavr] Wake lock unavailable:', e)
+  }
+}
+
+function releaseWakeLock(){
+  if(wakeLock){ wakeLock.release().catch(()=>{}); wakeLock = null }
+}
 
 // The definitive proof of whether audio is actually flowing (as opposed to
 // the connection merely being "connected" at the transport level) — logs
@@ -109,6 +127,12 @@ async function createPC(targetAddress){
   pc.ontrack = (e) => {
     if(signalingCallbacks.onDebug){
       signalingCallbacks.onDebug(`ontrack fired: kind=${e.track.kind} readyState=${e.track.readyState} muted=${e.track.muted} streams=${e.streams.length}`)
+      // track.muted flips whenever RTP actually stops/resumes arriving —
+      // this is what will show directly if/when the remote side's audio
+      // cuts out mid-call, as opposed to just seeing bytesReceived stall
+      // after the fact every 3s.
+      e.track.onmute   = () => signalingCallbacks.onDebug && signalingCallbacks.onDebug('remote track MUTED (no RTP arriving)')
+      e.track.onunmute = () => signalingCallbacks.onDebug && signalingCallbacks.onDebug('remote track unmuted (RTP resumed)')
     }
     const audio = document.getElementById('remote-audio')
     if(!audio) return
@@ -144,10 +168,12 @@ async function createPC(targetAddress){
       if(disconnectTimer){ clearTimeout(disconnectTimer); disconnectTimer = null }
       if(signalingCallbacks.onConnected) signalingCallbacks.onConnected()
       startStatsLogging()
+      acquireWakeLock()
     }
 
     if(state === 'closed' || state === 'failed' || state === 'disconnected'){
       stopStatsLogging()
+      releaseWakeLock()
     }
 
     if(state === 'disconnected'){
@@ -237,8 +263,18 @@ function endCall(){
   if(peerTarget) sendCallEnded(peerTarget)
   if(disconnectTimer){ clearTimeout(disconnectTimer); disconnectTimer = null }
   stopStatsLogging()
+  releaseWakeLock()
   if(pc){ pc.close(); pc = null }
   if(localStream){ localStream.getTracks().forEach(t => t.stop()); localStream = null }
   remoteDescSet = false
   iceQueue = []
 }
+
+// The Wake Lock API auto-releases whenever the page becomes hidden (e.g.
+// the OS momentarily draws another app over it) — re-acquire it as soon as
+// the page is visible again for as long as a call is actually still active.
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible' && pc && pc.connectionState === 'connected'){
+    acquireWakeLock()
+  }
+})
