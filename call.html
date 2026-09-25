@@ -251,6 +251,27 @@
 // end-call button wiring and the WebRTC/signaling init at the bottom) would
 // otherwise still run against missing/empty data and throw partway through.
 ;(function(){
+  // TEMPORARY DIAGNOSTIC — the call screen has been going solid black on an
+  // Android phone with no way to see why (no remote-debugging access to that
+  // device). This surfaces any JS error directly on-screen instead of only
+  // in devtools, so we can tell a real JS bug apart from the tab's renderer
+  // itself crashing (which no error handler can catch). Remove once diagnosed.
+  ;(function(){
+    const box = document.createElement('div')
+    box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#b91c1c;color:#fff;font:12px monospace;padding:8px;max-height:40vh;overflow:auto;white-space:pre-wrap;display:none'
+    document.body.appendChild(box)
+    function show(msg){
+      box.style.display = 'block'
+      box.textContent += msg + '\n\n'
+    }
+    window.addEventListener('error', e => {
+      show('ERROR: ' + e.message + '\n  at ' + e.filename + ':' + e.lineno + ':' + e.colno)
+    })
+    window.addEventListener('unhandledrejection', e => {
+      show('UNHANDLED PROMISE REJECTION: ' + (e.reason && e.reason.stack || e.reason))
+    })
+  })()
+
   const token       = localStorage.getItem('wavr_token')
   const myAddress   = localStorage.getItem('wavr_address')
   const myUsername  = localStorage.getItem('wavr_username')
