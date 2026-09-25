@@ -123,6 +123,12 @@ class WavrSignaling implements MessageComponentInterface {
       case 'decline':
         $this->relay($to, ['type'=>'call_declined','from'=>$fromAddr]);
         break;
+      case 'ping':
+        // App-level heartbeat from the client (see js/signaling.js) — keeps
+        // the connection from sitting idle long enough for the Cloudflare
+        // tunnel to silently close it. No relay needed, just reply.
+        $from->send(json_encode(['type'=>'pong']));
+        break;
       case 'end':
         $this->relay($to, ['type'=>'call_ended','from'=>$fromAddr]);
         break;

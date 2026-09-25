@@ -5,7 +5,9 @@ let reconnectTimer   = null
 let myAddress        = null
 let retryCount       = 0
 let outgoingQueue    = []   // buffer messages sent before WS is open
+let heartbeatTimer   = null
 const MAX_RETRIES    = 10
+const HEARTBEAT_MS   = 25000  // keep well under Cloudflare's ~100s idle-connection timeout
 
 function initSignaling(address, token, callbacks){
   myAddress          = address
@@ -43,6 +45,15 @@ function connectWS(url){
       while(outgoingQueue.length){
         ws.send(outgoingQueue.shift())
       }
+      // Keep the connection from ever sitting idle long enough for the
+      // Cloudflare tunnel (or any reverse proxy) to silently close it —
+      // that was causing repeated reconnect churn, and a call landing on
+      // the signaling server mid-reconnect could lose its offer/ICE
+      // messages in the gap, getting stuck on "Connecting".
+      clearInterval(heartbeatTimer)
+      heartbeatTimer = setInterval(() => {
+        if(ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }))
+      }, HEARTBEAT_MS)
     }
 
     ws.onmessage = (event) => {
@@ -52,6 +63,7 @@ function connectWS(url){
     }
 
     ws.onclose = (e) => {
+      clearInterval(heartbeatTimer)
       if(e.wasClean) return   // navigating away — don't reconnect
       retryCount++
       const delay = Math.min(3000 * retryCount, 15000)
