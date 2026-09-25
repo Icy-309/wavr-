@@ -542,6 +542,12 @@
       sessionStorage.clear()
       gsap.to(['.call-center','.controls'],{opacity:0,y:20,duration:.35,
         onComplete:()=>window.location.href='app.html'})
+    },
+    // webrtc.js's ontrack fires this when the browser blocks autoplay on the
+    // remote <audio> element — connection succeeds, timer starts, but
+    // nothing is actually audible. Tapping anywhere on the page unlocks it.
+    onAudioBlocked: () => {
+      showToast('Tap anywhere to enable audio')
     }
   })
 

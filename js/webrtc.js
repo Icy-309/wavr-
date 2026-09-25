@@ -55,7 +55,27 @@ async function createPC(targetAddress){
 
   pc.ontrack = (e) => {
     const audio = document.getElementById('remote-audio')
-    if(audio) audio.srcObject = e.streams[0]
+    if(!audio) return
+    audio.srcObject = e.streams[0]
+    // <audio autoplay> can be silently blocked by the browser's autoplay
+    // policy even after the connection succeeds — nothing else here would
+    // ever surface that, so explicitly attempt playback and fall back to
+    // a one-tap unlock instead of just staying silent with no indication
+    // anything is wrong.
+    const playAttempt = audio.play()
+    if(playAttempt && typeof playAttempt.catch === 'function'){
+      playAttempt.catch(err => {
+        console.warn('[Wavr] Remote audio autoplay blocked:', err)
+        if(signalingCallbacks.onAudioBlocked) signalingCallbacks.onAudioBlocked()
+        const unlock = () => {
+          audio.play().catch(()=>{})
+          document.removeEventListener('click', unlock)
+          document.removeEventListener('touchend', unlock)
+        }
+        document.addEventListener('click', unlock, { once: true })
+        document.addEventListener('touchend', unlock, { once: true })
+      })
+    }
   }
 
   pc.onconnectionstatechange = () => {
