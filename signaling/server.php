@@ -104,6 +104,14 @@ class WavrSignaling implements MessageComponentInterface {
 
     $to = $msg['to'] ?? null;
 
+    // Diagnostic: confirming whether offer/answer/ice actually flow between
+    // both sides was otherwise invisible — the only prior logging was
+    // connect/disconnect, nothing about call-relevant message relay itself.
+    if(in_array($msg['type'], ['offer','answer','ice','decline','end'])){
+      $delivered = $to && isset($this->clients[$to]);
+      echo "[Wavr] Relay {$msg['type']}: $fromAddr -> $to (" . ($delivered ? 'delivered' : 'TARGET NOT CONNECTED') . ")\n";
+    }
+
     switch($msg['type']){
       case 'offer':
         $this->relay($to, [
