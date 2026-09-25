@@ -53,6 +53,53 @@ function stopStatsLogging(){
   if(statsInterval){ clearInterval(statsInterval); statsInterval = null }
 }
 
+let pairStatsInterval = null
+let seenPairIds = new Set()
+
+// Runs from the moment the connection is created — unlike startStatsLogging
+// above (which only starts once 'connected' fires, and so never runs at all
+// when the problem is exactly that it never reaches 'connected'), this shows
+// every individual candidate-pair ICE actually tried during the checking
+// phase and its outcome (succeeded/failed/frozen/etc.) — the deepest level
+// of visibility available without raw packet capture.
+function startPairStatsLogging(){
+  stopPairStatsLogging()
+  seenPairIds = new Set()
+  pairStatsInterval = setInterval(async () => {
+    if(!pc) return
+    try {
+      const stats = await pc.getStats()
+      const pairs = []
+      stats.forEach(r => { if(r.type === 'candidate-pair') pairs.push(r) })
+      if(pairs.length === 0){
+        if(signalingCallbacks.onDebug) signalingCallbacks.onDebug('candidate pairs: none yet')
+        return
+      }
+      pairs.forEach(p => {
+        const key = p.id + ':' + p.state
+        if(seenPairIds.has(key)) return   // only log state transitions, not every unchanged poll
+        seenPairIds.add(key)
+        let localType = '?', remoteType = '?'
+        stats.forEach(r => {
+          if(r.id === p.localCandidateId)  localType  = r.candidateType || '?'
+          if(r.id === p.remoteCandidateId) remoteType = r.candidateType || '?'
+        })
+        if(signalingCallbacks.onDebug){
+          signalingCallbacks.onDebug(
+            `pair ${localType}->${remoteType}: state=${p.state} nominated=${!!p.nominated} bytesSent=${p.bytesSent||0} bytesRecv=${p.bytesReceived||0}`
+          )
+        }
+      })
+    } catch(e){
+      if(signalingCallbacks.onDebug) signalingCallbacks.onDebug('getStats() failed: ' + e.message)
+    }
+  }, 2000)
+}
+
+function stopPairStatsLogging(){
+  if(pairStatsInterval){ clearInterval(pairStatsInterval); pairStatsInterval = null }
+}
+
 const FALLBACK_ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302'  },
@@ -112,6 +159,7 @@ async function createPC(targetAddress){
   remoteDescSet = false
   const iceServers = await getIceServers()
   pc            = new RTCPeerConnection(iceServers)
+  startPairStatsLogging()
 
   let candidateCounts = { host: 0, srflx: 0, relay: 0, other: 0 }
 
@@ -287,6 +335,7 @@ function endCall(){
   if(peerTarget) sendCallEnded(peerTarget)
   if(disconnectTimer){ clearTimeout(disconnectTimer); disconnectTimer = null }
   stopStatsLogging()
+  stopPairStatsLogging()
   releaseWakeLock()
   if(pc){ pc.close(); pc = null }
   if(localStream){ localStream.getTracks().forEach(t => t.stop()); localStream = null }
