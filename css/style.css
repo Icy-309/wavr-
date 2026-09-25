@@ -217,7 +217,9 @@ hr.div { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
   }
-  z-index: 9000; display: none; align-items: center; justify-content: center;
+  /* Above install.js's "Add to home screen" banner (z-index 88888) — an
+     incoming call must take priority over a passive install prompt. */
+  z-index: 90000; display: none; align-items: center; justify-content: center;
   padding: 20px; overscroll-behavior: none;
 }
 #overlay.on { display: flex; animation: fadeIn .22s ease; }
@@ -248,7 +250,10 @@ hr.div { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
   }
-  z-index: 8000; display: none; align-items: flex-end; justify-content: center;
+  /* Above install.js's "Add to home screen" banner (z-index 88888) — it was
+     rendering on top of this modal and covering the bottom wallet options
+     (Solflare row + the Solana credit line) on mobile. */
+  z-index: 90000; display: none; align-items: flex-end; justify-content: center;
 }
 #wallet-modal.on { display: flex; animation: fadeIn .18s ease; }
 
