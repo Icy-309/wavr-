@@ -6,6 +6,34 @@ let peerTarget    = null
 let iceQueue      = []
 let remoteDescSet = false
 let disconnectTimer = null   // grace period before treating disconnected as ended
+let statsInterval   = null
+
+// The definitive proof of whether audio is actually flowing (as opposed to
+// the connection merely being "connected" at the transport level) — logs
+// actual RTP byte counts for the outbound (mic) and inbound (remote) audio
+// every 3s. If outbound stays at 0, our mic audio never reaches the peer;
+// if inbound stays at 0, nothing is arriving from them, regardless of what
+// connectionState says.
+function startStatsLogging(){
+  stopStatsLogging()
+  statsInterval = setInterval(async () => {
+    if(!pc) return
+    try {
+      const stats = await pc.getStats()
+      let out = null, inn = null
+      stats.forEach(r => {
+        if(r.type === 'outbound-rtp' && r.kind === 'audio') out = r
+        if(r.type === 'inbound-rtp'  && r.kind === 'audio') inn = r
+      })
+      const msg = `audio stats: sent=${out ? out.bytesSent : 'n/a'}B recv=${inn ? inn.bytesReceived : 'n/a'}B`
+      if(signalingCallbacks.onDebug) signalingCallbacks.onDebug(msg)
+    } catch(e){}
+  }, 3000)
+}
+
+function stopStatsLogging(){
+  if(statsInterval){ clearInterval(statsInterval); statsInterval = null }
+}
 
 const FALLBACK_ICE_SERVERS = {
   iceServers: [
@@ -39,6 +67,16 @@ async function getIceServers(){
 
 async function getAudio(){
   localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+  const tracks = localStream.getAudioTracks()
+  if(signalingCallbacks.onDebug){
+    if(tracks.length === 0){
+      signalingCallbacks.onDebug('getUserMedia: NO AUDIO TRACKS RETURNED')
+    } else {
+      tracks.forEach(t => signalingCallbacks.onDebug(
+        `local mic track: enabled=${t.enabled} muted=${t.muted} readyState=${t.readyState} label="${t.label}"`
+      ))
+    }
+  }
   return localStream
 }
 
@@ -69,6 +107,9 @@ async function createPC(targetAddress){
   }
 
   pc.ontrack = (e) => {
+    if(signalingCallbacks.onDebug){
+      signalingCallbacks.onDebug(`ontrack fired: kind=${e.track.kind} readyState=${e.track.readyState} muted=${e.track.muted} streams=${e.streams.length}`)
+    }
     const audio = document.getElementById('remote-audio')
     if(!audio) return
     audio.srcObject = e.streams[0]
@@ -102,6 +143,11 @@ async function createPC(targetAddress){
       // Clear any pending disconnect grace timer
       if(disconnectTimer){ clearTimeout(disconnectTimer); disconnectTimer = null }
       if(signalingCallbacks.onConnected) signalingCallbacks.onConnected()
+      startStatsLogging()
+    }
+
+    if(state === 'closed' || state === 'failed' || state === 'disconnected'){
+      stopStatsLogging()
     }
 
     if(state === 'disconnected'){
@@ -190,6 +236,7 @@ function toggleMute(muted){
 function endCall(){
   if(peerTarget) sendCallEnded(peerTarget)
   if(disconnectTimer){ clearTimeout(disconnectTimer); disconnectTimer = null }
+  stopStatsLogging()
   if(pc){ pc.close(); pc = null }
   if(localStream){ localStream.getTracks().forEach(t => t.stop()); localStream = null }
   remoteDescSet = false
