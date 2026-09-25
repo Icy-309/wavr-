@@ -1,4 +1,4 @@
-const CACHE  = 'wavr-v5'
+const CACHE  = 'wavr-v6'
 const STATIC = [
   '/index.html',
   '/register.html',
@@ -8,6 +8,7 @@ const STATIC = [
   '/js/signaling.js',
   '/js/webrtc.js',
   '/js/install.js',
+  '/js/phantom-deeplink.js',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png'

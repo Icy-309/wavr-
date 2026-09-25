@@ -223,6 +223,8 @@
 
 <!-- GSAP -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl.min.js"></script>
+<script src="js/phantom-deeplink.js"></script>
 <script>
 // ── HERO ANIMATIONS ──
 window.addEventListener('load', () => {
@@ -307,6 +309,15 @@ async function connectWallet(name){
   }
 
   if(!provider){
+    // No injected provider — on mobile that's expected outside Phantom's own
+    // in-app browser (which we deliberately avoid for calling, see
+    // phantom-deeplink.js). Hand off to the real Phantom app via deep link
+    // instead of just saying "not installed".
+    if(name === 'phantom' && WavrPhantomDeeplink.shouldUseDeeplink()){
+      WavrPhantomDeeplink.startConnect()
+      return
+    }
+
     const links = { phantom:'https://phantom.app', backpack:'https://backpack.app', solflare:'https://solflare.com' }
     toast('err', name.charAt(0).toUpperCase()+name.slice(1)+' not installed')
     document.getElementById('install-tip').style.display = 'block'
@@ -343,26 +354,7 @@ async function connectWallet(name){
       throw e
     }
 
-    // Auth
-    const ar = await fetch('/api/auth.php', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ wallet_address:pubkey, signature:sigHex, nonce:nd.nonce })
-    })
-    const ad = await ar.json()
-    if(!ad.token) throw new Error(ad.error || 'Auth failed')
-
-    localStorage.setItem('wavr_token',   ad.token)
-    localStorage.setItem('wavr_address', pubkey)
-
-    if(ad.username)   localStorage.setItem('wavr_username', ad.username)
-    if(ad.avatar_url) localStorage.setItem('wavr_avatar',   ad.avatar_url)
-
-    if(ad.username){
-      window.location.href = 'app.html'
-    } else {
-      window.location.href = 'register.html'
-    }
+    await completeAuth(pubkey, sigHex, nd.nonce)
 
   } catch(err){
     console.error(err)
@@ -371,10 +363,86 @@ async function connectWallet(name){
   }
 }
 
-// Auto-redirect if already logged in — verify token is still valid first
+// Shared by both the injected-provider flow above and the Phantom deep-link
+// return flow below — posts the signature to our backend and lands the user
+// on the right next screen.
+async function completeAuth(pubkey, sigHex, nonce){
+  const btn = document.getElementById('connect-btn')
+  const ar = await fetch('/api/auth.php', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ wallet_address:pubkey, signature:sigHex, nonce })
+  })
+  const ad = await ar.json()
+  if(!ad.token){
+    toast('err', ad.error || 'Auth failed')
+    btn.classList.remove('loading')
+    return
+  }
+
+  localStorage.setItem('wavr_token',   ad.token)
+  localStorage.setItem('wavr_address', pubkey)
+
+  if(ad.username)   localStorage.setItem('wavr_username', ad.username)
+  if(ad.avatar_url) localStorage.setItem('wavr_avatar',   ad.avatar_url)
+
+  if(ad.username){
+    window.location.href = 'app.html'
+  } else {
+    window.location.href = 'register.html'
+  }
+}
+
+// ── PHANTOM DEEP-LINK RETURN ──
+// We land back here (index.html?phantom_action=...) after the Phantom app
+// redirects control back to the browser, either after connect or signMessage.
+;(async function handlePhantomDeeplinkReturn(){
+  const result = WavrPhantomDeeplink.handleReturnIfAny()
+  if(!result) return
+
+  const btn = document.getElementById('connect-btn')
+  btn.classList.add('loading')
+
+  if(result.type === 'error'){
+    toast('err', result.message)
+    btn.classList.remove('loading')
+    return
+  }
+
+  if(result.type === 'connect'){
+    try {
+      const nr = await fetch('/api/auth.php?action=nonce&address=' + result.walletAddress)
+      const nd = await nr.json()
+      if(!nd.nonce) throw new Error('Nonce failed')
+      WavrPhantomDeeplink.requestSignMessage(result.walletAddress, `Sign in to Wavr: ${nd.nonce}`, nd.nonce)
+      // Page navigates away to the Phantom app here — nothing more runs.
+    } catch(err){
+      console.error(err)
+      toast('err', err.message || 'Connection failed')
+      btn.classList.remove('loading')
+    }
+    return
+  }
+
+  if(result.type === 'signMessage'){
+    try {
+      await completeAuth(result.walletAddress, result.signatureHex, result.nonce)
+    } catch(err){
+      console.error(err)
+      toast('err', err.message || 'Connection failed')
+      btn.classList.remove('loading')
+    }
+  }
+})()
+
+// Auto-redirect if already logged in — verify token is still valid first.
+// Skipped while handling a Phantom deep-link return (above): that flow is
+// async and navigates on its own, and letting this fire concurrently could
+// redirect away mid-handshake using a stale token from an earlier session.
 const _t = localStorage.getItem('wavr_token')
 const _u = localStorage.getItem('wavr_username')
-if(_t && _u){
+const _isPhantomReturn = new URLSearchParams(location.search).has('phantom_action')
+if(_t && _u && !_isPhantomReturn){
   fetch('/api/session.php', { headers: { 'Authorization': 'Bearer '+_t } })
     .then(r => r.json())
     .then(d => {
