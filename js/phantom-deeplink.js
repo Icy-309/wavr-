@@ -77,7 +77,7 @@
 
   window.WavrB58 = { encode: b58encode, decode: b58decode }
 
-  // ── DEEP-LINK STATE (sessionStorage — must survive the round trip to the
+  // ── DEEP-LINK STATE (localStorage — must survive the round trip to the
   //    Phantom app and back) ──
   const SK  = 'wavr_pdl_secret_key'    // our ephemeral X25519 secret key (base58)
   const PK  = 'wavr_pdl_public_key'    // our ephemeral X25519 public key (base58)
@@ -102,8 +102,8 @@
 
   function startConnect(){
     const kp = nacl.box.keyPair()
-    sessionStorage.setItem(SK, b58encode(kp.secretKey))
-    sessionStorage.setItem(PK, b58encode(kp.publicKey))
+    localStorage.setItem(SK, b58encode(kp.secretKey))
+    localStorage.setItem(PK, b58encode(kp.publicKey))
 
     const redirectLink = location.origin + location.pathname.replace(/[^/]*$/, '') + 'index.html?phantom_action=connect'
     const params = new URLSearchParams({
@@ -116,12 +116,12 @@
   }
 
   function requestSignMessage(walletAddress, message, authNonce){
-    const sharedSecret = b58decode(sessionStorage.getItem(SS))
-    const session = sessionStorage.getItem(SESS)
-    const dappPublicKey = sessionStorage.getItem(PK)
+    const sharedSecret = b58decode(localStorage.getItem(SS))
+    const session = localStorage.getItem(SESS)
+    const dappPublicKey = localStorage.getItem(PK)
 
-    sessionStorage.setItem(WAL, walletAddress)
-    sessionStorage.setItem(NNC, authNonce)
+    localStorage.setItem(WAL, walletAddress)
+    localStorage.setItem(NNC, authNonce)
 
     const payload = {
       session,
@@ -161,9 +161,9 @@
     try {
       if(action === 'connect'){
         const phantomPublicKey = b58decode(url.searchParams.get('phantom_encryption_public_key'))
-        const dappSecretKey    = b58decode(sessionStorage.getItem(SK))
+        const dappSecretKey    = b58decode(localStorage.getItem(SK))
         const sharedSecret     = nacl.box.before(phantomPublicKey, dappSecretKey)
-        sessionStorage.setItem(SS, b58encode(sharedSecret))
+        localStorage.setItem(SS, b58encode(sharedSecret))
 
         const nonce = b58decode(url.searchParams.get('nonce'))
         const data  = b58decode(url.searchParams.get('data'))
@@ -171,12 +171,12 @@
         if(!decrypted) return { type: 'error', message: 'Could not decrypt Phantom response' }
 
         const connectData = JSON.parse(new TextDecoder().decode(decrypted))
-        sessionStorage.setItem(SESS, connectData.session)
+        localStorage.setItem(SESS, connectData.session)
         return { type: 'connect', walletAddress: connectData.public_key }
       }
 
       if(action === 'signMessage'){
-        const sharedSecret = b58decode(sessionStorage.getItem(SS))
+        const sharedSecret = b58decode(localStorage.getItem(SS))
         const nonce = b58decode(url.searchParams.get('nonce'))
         const data  = b58decode(url.searchParams.get('data'))
         const decrypted = nacl.box.open.after(data, nonce, sharedSecret)
@@ -189,8 +189,8 @@
         return {
           type: 'signMessage',
           signatureHex: sigHex,
-          walletAddress: sessionStorage.getItem(WAL),
-          nonce: sessionStorage.getItem(NNC)
+          walletAddress: localStorage.getItem(WAL),
+          nonce: localStorage.getItem(NNC)
         }
       }
     } catch(e){
@@ -201,8 +201,14 @@
     return null
   }
 
+  // Call once the flow finishes (success or failure) so retries start clean
+  // and the ephemeral session key/shared secret don't linger in localStorage.
+  function clearState(){
+    ;[SK, PK, SS, SESS, WAL, NNC].forEach(k => localStorage.removeItem(k))
+  }
+
   window.WavrPhantomDeeplink = {
     isMobile, hasInjectedProvider, shouldUseDeeplink,
-    startConnect, requestSignMessage, handleReturnIfAny
+    startConnect, requestSignMessage, handleReturnIfAny, clearState
   }
 })()

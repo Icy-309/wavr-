@@ -405,6 +405,7 @@ async function completeAuth(pubkey, sigHex, nonce){
 
   if(result.type === 'error'){
     toast('err', result.message)
+    WavrPhantomDeeplink.clearState()
     btn.classList.remove('loading')
     return
   }
@@ -419,6 +420,7 @@ async function completeAuth(pubkey, sigHex, nonce){
     } catch(err){
       console.error(err)
       toast('err', err.message || 'Connection failed')
+      WavrPhantomDeeplink.clearState()
       btn.classList.remove('loading')
     }
     return
@@ -427,9 +429,11 @@ async function completeAuth(pubkey, sigHex, nonce){
   if(result.type === 'signMessage'){
     try {
       await completeAuth(result.walletAddress, result.signatureHex, result.nonce)
+      WavrPhantomDeeplink.clearState()
     } catch(err){
       console.error(err)
       toast('err', err.message || 'Connection failed')
+      WavrPhantomDeeplink.clearState()
       btn.classList.remove('loading')
     }
   }
