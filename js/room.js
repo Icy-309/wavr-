@@ -4,15 +4,21 @@
 // member. To avoid offer glare, the member who JOINS sends offers to everyone
 // already in the room; existing members only ever answer.
 //
-// Depends on js/signaling.js (initSignaling/sendSig) and js/webrtc.js
+// Join flow: open our private inbox → api/rooms.php?action=join (on-chain
+// gate check; makes us a member, which unlocks the room's private channel)
+// → subscribe to room:<id> → offer to everyone already there. A heartbeat
+// keeps membership fresh; if the server says we've dropped out, we rejoin.
+//
+// Depends on js/signaling.js (initSignaling/sendSig/subscribeRoom) and js/webrtc.js
 // (getIceServers). Everything lives inside this closure so it can't collide
 // with webrtc.js's 1:1-call globals (pc, localStream, …).
 
 const TrenchRoom = (() => {
   const peers = new Map()   // address -> { pc, iceQueue, remoteSet, audioEl, analyser, info }
   let roomId     = null
-  let pendingPass = null
   let iceConfig  = null
+  let heartbeat  = null
+  let rejoining  = false
   let mic        = null     // local MediaStream, or null when listen-only
   let micAnalyser = null
   let muted      = true
@@ -24,7 +30,7 @@ const TrenchRoom = (() => {
   const token   = () => localStorage.getItem('wavr_token')
   const address = () => localStorage.getItem('wavr_address')
 
-  async function requestPass(id){
+  async function requestJoin(id){
     const r = await fetch('/api/rooms.php?action=join', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token() },
@@ -44,13 +50,26 @@ const TrenchRoom = (() => {
 
     try { audioCtx = new (window.AudioContext || window.webkitAudioContext)() } catch(e){}
 
-    // Gate check first — no point asking for the mic if they can't get in.
-    const passData = await requestPass(id)   // throws with .data.gated on insufficient balance
-    pendingPass = passData.pass
-    if(ui.onBalance) ui.onBalance(passData.balance)
+    // Inbox first, so offers from anyone who joins right after us aren't missed.
+    await new Promise((resolve, reject) => {
+      let opened = false
+      initSignaling(address(), token(), {
+        onOpen: () => { if(!opened){ opened = true; resolve() } },
+        onRoomMessage: handle,
+        onSignalError: (m) => {
+          if(m === 'Not in a room') return rejoin()
+          if(!opened) return reject(new Error(m))
+          if(ui.onError) ui.onError(m === 'Slow down' ? 'Slow down: one message at a time' : m)
+        },
+      })
+      setTimeout(() => { if(!opened) reject(new Error('Could not connect to Wavr signaling')) }, 15000)
+    })
+
+    // Gate check — throws with .data.gated on insufficient balance.
+    const joined = await requestJoin(id)
+    if(ui.onBalance) ui.onBalance(joined.balance)
 
     iceConfig = await getIceServers()
-
     try {
       mic = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -63,31 +82,33 @@ const TrenchRoom = (() => {
       if(ui.onListenOnly) ui.onListenOnly(e)
     }
 
-    initSignaling(address(), token(), {
-      onOpen:          () => join(),
-      onRoomMessage:   handle,
-      onSignalError:   (m) => ui.onError && ui.onError(m),
-    })
+    await subscribeRoom(id)
+    await handle({ type: 'room_joined', peers: joined.peers })
+
+    clearInterval(heartbeat)
+    heartbeat = setInterval(() => { if(!left) sendSig({ type: 'room_heartbeat' }) }, 25000)
     startLevels()
   }
 
-  // Runs on every (re)connect: the server forgets room membership when the
-  // socket drops, so a reconnect needs a fresh pass and a fresh mesh.
-  async function join(){
-    if(left) return
-    closeAllPeers()
+  // We dropped out server-side (tab asleep too long, network gap): rejoin and
+  // rebuild the mesh from scratch.
+  async function rejoin(){
+    if(left || rejoining) return
+    rejoining = true
     try {
-      const pass = pendingPass || (await requestPass(roomId)).pass
-      pendingPass = null
-      sendSig({ type: 'room_join', room_id: roomId, pass })
+      const joined = await requestJoin(roomId)
+      await subscribeRoom(roomId)
+      await handle({ type: 'room_joined', peers: joined.peers })
+      if(muted === false) sendSig({ type: 'room_mute', muted: false })
     } catch(e){
-      if(ui.onError) ui.onError(e.message)
-    }
+      if(ui.onError) ui.onError(e.message || 'Lost the room')
+    } finally { rejoining = false }
   }
 
   async function handle(msg){
     switch(msg.type){
       case 'room_joined':
+        closeAllPeers()
         if(ui.onJoined) ui.onJoined(msg.peers)
         for(const info of msg.peers){
           const p = addPeer(info)
@@ -96,17 +117,25 @@ const TrenchRoom = (() => {
         break
 
       case 'room_peer_joined':
-        addPeer(msg.peer)               // they'll send us the offer
+        if(msg.peer.address === address()) break
+        // Their offer can race ahead of this notice; don't tear down a connection already negotiating.
+        if(peers.has(msg.peer.address)) Object.assign(peers.get(msg.peer.address).info, msg.peer)
+        else addPeer(msg.peer)          // they'll send us the offer
         if(ui.onPeerJoined) ui.onPeerJoined(msg.peer)
         break
 
       case 'room_peer_left':
+        if(msg.address === address()) break
         removePeer(msg.address)
         if(ui.onPeerLeft) ui.onPeerLeft(msg.address)
         break
 
       case 'room_offer': {
-        const p = peers.get(msg.from) || addPeer({ address: msg.from })
+        let p = peers.get(msg.from)
+        if(!p){
+          p = addPeer({ address: msg.from })
+          if(ui.onPeerJoined) ui.onPeerJoined({ address: msg.from, username: null, muted: true })
+        }
         try {
           await p.pc.setRemoteDescription(msg.sdp)
           p.remoteSet = true
@@ -256,7 +285,9 @@ const TrenchRoom = (() => {
 
   function leave(){
     left = true
+    clearInterval(heartbeat)
     sendSig({ type: 'room_leave' })
+    unsubscribeRoom()
     closeAllPeers()
     clearInterval(levelTimer)
     if(mic){ mic.getTracks().forEach(t => t.stop()); mic = null }
@@ -269,7 +300,7 @@ const TrenchRoom = (() => {
   }
 
   return {
-    enter, leave, setMuted, chat, resumeAudio, requestPass,
+    enter, leave, setMuted, chat, resumeAudio,
     hasMic:  () => !!mic,
     isMuted: () => muted,
   }

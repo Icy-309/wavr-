@@ -1,85 +1,109 @@
-// Wavr Signaling Client
-let ws               = null
+// Wavr Signaling Client — Supabase Realtime edition.
+//
+// Receive: a private Realtime channel `inbox:<my wallet>` (plus `room:<id>`
+//          while in a Trench Room). Only this wallet can read them; the
+//          RLS policy lives in schema.sql.
+// Send:    POST /api/signal.php, which checks the session and stamps the
+//          real sender before publishing. Messages are batched and sent
+//          strictly in order (an ICE candidate must never overtake its offer).
+//
+// Requires supabase-js (UMD build, global `supabase`) to be loaded first.
+// Public API is unchanged from the old WebSocket client: initSignaling,
+// sendSig, sendOffer/Answer/Ice, signalingDecline, sendCallEnded.
+
+let sb                 = null
+let inboxChannel       = null
+let roomChannel        = null
 let signalingCallbacks = {}
-let reconnectTimer   = null
-let myAddress        = null
-let retryCount       = 0
-let outgoingQueue    = []   // buffer messages sent before WS is open
-let heartbeatTimer   = null
-const MAX_RETRIES    = 10
-const HEARTBEAT_MS   = 25000  // keep well under Cloudflare's ~100s idle-connection timeout
+let myAddress          = null
+let myToken            = null
+let authTimer          = null
+let sendQueue          = []
+let sending            = false
 
-function initSignaling(address, token, callbacks){
+async function fetchRealtimeConfig(){
+  const r = await fetch('/api/realtime.php', { headers: { 'Authorization': 'Bearer ' + myToken } })
+  const d = await r.json()
+  if(!r.ok || d.error) throw new Error(d.error || 'Realtime config failed')
+  return d
+}
+
+// The Realtime JWT lasts an hour; swap in a fresh one well before it expires
+// so long calls/rooms don't get cut off.
+function scheduleAuthRefresh(expiresAt){
+  clearTimeout(authTimer)
+  const ms = Math.max(30000, (expiresAt * 1000 - Date.now()) - 5 * 60 * 1000)
+  authTimer = setTimeout(async () => {
+    try {
+      const cfg = await fetchRealtimeConfig()
+      sb.realtime.setAuth(cfg.jwt)
+      scheduleAuthRefresh(cfg.expires_at)
+    } catch(e){
+      console.warn('[Wavr] Realtime token refresh failed, retrying soon:', e)
+      authTimer = setTimeout(() => scheduleAuthRefresh(Date.now() / 1000 + 5 * 60 + 30), 30000)
+    }
+  }, ms)
+}
+
+function debug(msg){ if(signalingCallbacks.onDebug) signalingCallbacks.onDebug(msg) }
+
+async function initSignaling(address, token, callbacks){
   myAddress          = address
+  myToken            = token
   signalingCallbacks = callbacks || {}
-  retryCount         = 0
-  outgoingQueue      = []
 
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-  const SIGNAL_HOST = window.WAVR_SIGNAL_HOST || location.hostname
-  const SIGNAL_PORT = window.WAVR_SIGNAL_PORT || 8080
-  const url = `${proto}://${SIGNAL_HOST}:${SIGNAL_PORT}?address=${encodeURIComponent(address)}&token=${encodeURIComponent(token)}`
+  try {
+    const cfg = await fetchRealtimeConfig()
+    sb = supabase.createClient(cfg.url, cfg.anon_key, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    })
+    sb.realtime.setAuth(cfg.jwt)
+    scheduleAuthRefresh(cfg.expires_at)
 
-  connectWS(url)
+    inboxChannel = sb.channel('inbox:' + address, { config: { private: true } })
+      .on('broadcast', { event: 'sig' }, ({ payload }) => handleSignalingMessage(payload))
+      .subscribe((status, err) => {
+        if(status === 'SUBSCRIBED'){
+          console.log('[Wavr] Signaling connected')
+          debug('signaling: inbox subscribed')
+          if(signalingCallbacks.onOpen) signalingCallbacks.onOpen()
+        } else if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT'){
+          // supabase-js keeps retrying on its own; just surface it.
+          console.warn('[Wavr] Signaling channel ' + status, err || '')
+          debug('signaling: ' + status + (err ? ' ' + err.message : ''))
+        }
+      })
+  } catch(e){
+    console.error('[Wavr] Cannot start signaling:', e)
+    if(signalingCallbacks.onSignalError) signalingCallbacks.onSignalError(e.message)
+  }
+}
 
-  // Close cleanly on navigation so onclose.wasClean=true — no reconnect fires
-  window.addEventListener('beforeunload', () => {
-    if(ws && ws.readyState === WebSocket.OPEN) ws.close(1000, 'navigating')
+// Room events (chat, joins/leaves, mute) arrive on the room's own channel.
+// Only callable after api/rooms.php?action=join has made us a member.
+function subscribeRoom(roomId){
+  return new Promise((resolve, reject) => {
+    if(!sb) return reject(new Error('Signaling not ready'))
+    unsubscribeRoom()
+    let settled = false
+    roomChannel = sb.channel('room:' + roomId, { config: { private: true } })
+      .on('broadcast', { event: 'sig' }, ({ payload }) => handleSignalingMessage(payload))
+      .subscribe((status, err) => {
+        if(status === 'SUBSCRIBED' && !settled){ settled = true; resolve() }
+        if((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') && !settled){
+          settled = true; reject(err || new Error('Could not open room channel (' + status + ')'))
+        }
+      })
   })
 }
 
-function connectWS(url){
-  if(retryCount >= MAX_RETRIES){
-    console.warn('[Wavr] Signaling: max retries reached')
-    return
-  }
-
-  try {
-    ws = new WebSocket(url)
-
-    ws.onopen = () => {
-      console.log('[Wavr] Signaling connected')
-      retryCount = 0
-      clearTimeout(reconnectTimer)
-      // Drain any messages that were sent before the socket opened
-      while(outgoingQueue.length){
-        ws.send(outgoingQueue.shift())
-      }
-      if(signalingCallbacks.onOpen) signalingCallbacks.onOpen()
-      // Keep the connection from ever sitting idle long enough for the
-      // Cloudflare tunnel (or any reverse proxy) to silently close it —
-      // that was causing repeated reconnect churn, and a call landing on
-      // the signaling server mid-reconnect could lose its offer/ICE
-      // messages in the gap, getting stuck on "Connecting".
-      clearInterval(heartbeatTimer)
-      heartbeatTimer = setInterval(() => {
-        if(ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }))
-      }, HEARTBEAT_MS)
-    }
-
-    ws.onmessage = (event) => {
-      let msg
-      try { msg = JSON.parse(event.data) } catch(e){ return }
-      handleSignalingMessage(msg)
-    }
-
-    ws.onclose = (e) => {
-      clearInterval(heartbeatTimer)
-      if(e.wasClean) return   // navigating away — don't reconnect
-      retryCount++
-      const delay = Math.min(3000 * retryCount, 15000)
-      console.log(`[Wavr] Signaling lost, retry ${retryCount}/${MAX_RETRIES} in ${delay}ms`)
-      reconnectTimer = setTimeout(() => connectWS(url), delay)
-    }
-
-    ws.onerror = (e) => console.error('[Wavr] WS error:', e)
-
-  } catch(e){
-    console.error('[Wavr] Cannot connect to signaling:', e)
-  }
+function unsubscribeRoom(){
+  if(roomChannel && sb){ sb.removeChannel(roomChannel) }
+  roomChannel = null
 }
 
 function handleSignalingMessage(msg){
+  if(!msg || !msg.type) return
   switch(msg.type){
     case 'incoming_call':
       if(signalingCallbacks.onIncomingCall)
@@ -102,34 +126,46 @@ function handleSignalingMessage(msg){
         signalingCallbacks.onCallEnded()
       break
     default:
-      // Trench Rooms traffic (room_joined, room_offer, room_chat, …) — see js/room.js
-      if(msg.type && msg.type.startsWith('room_') && signalingCallbacks.onRoomMessage)
+      // Trench Rooms traffic (room_offer, room_chat, room_peer_joined, …) — see js/room.js
+      if(msg.type.startsWith('room_') && signalingCallbacks.onRoomMessage)
         signalingCallbacks.onRoomMessage(msg)
   }
-  if(msg.type === 'error' && signalingCallbacks.onSignalError)
-    signalingCallbacks.onSignalError(msg.message)
 }
 
+// Queue + single in-flight request keeps messages in order; everything that
+// piles up while a request is in flight goes out together in the next batch.
 function sendSig(msg){
-  const data = JSON.stringify(msg)
-  if(ws && ws.readyState === WebSocket.OPEN){
-    ws.send(data)
-  } else {
-    // Queue it — WS might still be connecting (race with startCall)
-    outgoingQueue.push(data)
+  sendQueue.push(msg)
+  flushSends()
+}
+
+async function flushSends(){
+  if(sending || !sendQueue.length) return
+  sending = true
+  const batch = sendQueue.splice(0, 40)
+  try {
+    const r = await fetch('/api/signal.php', {
+      method: 'POST',
+      // keepalive: a hang-up / leave sent right before navigating away still gets delivered
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + myToken },
+      body: JSON.stringify({ messages: batch })
+    })
+    const d = await r.json().catch(() => ({}))
+    if(!r.ok) throw new Error(d.error || ('HTTP ' + r.status))
+    if(d.errors && signalingCallbacks.onSignalError) d.errors.forEach(e => signalingCallbacks.onSignalError(e))
+  } catch(e){
+    console.warn('[Wavr] Signal send failed:', e)
+    debug('signal send failed: ' + e.message)
+  } finally {
+    sending = false
+    if(sendQueue.length) flushSends()
   }
 }
 
 function signalingDecline(to){ sendSig({ type:'decline', to }) }
-
-function sendOffer(to, offer){
-  const myAvatar = localStorage.getItem('wavr_avatar') || ''
-  sendSig({ type:'offer', to, offer,
-    from_username: localStorage.getItem('wavr_username'),
-    from_avatar:   myAvatar
-  })
-}
-
+// Caller's username/avatar are looked up server-side from the session.
+function sendOffer(to, offer){ sendSig({ type:'offer', to, offer }) }
 function sendAnswer(to, answer){ sendSig({ type:'answer', to, answer }) }
 function sendIce(to, candidate){ sendSig({ type:'ice', to, candidate }) }
 function sendCallEnded(to){ sendSig({ type:'end', to }) }

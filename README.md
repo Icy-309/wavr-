@@ -6,7 +6,7 @@ Decentralized audio calling on Solana. Connect wallet → claim username → cal
 - Frontend: HTML, CSS, Vanilla JS (PWA)
 - Backend: PHP REST API
 - Database: Supabase (PostgreSQL)
-- Signaling: PHP Ratchet WebSocket server
+- Signaling: Supabase Realtime (private channels, no server of our own)
 - Calls: Native WebRTC P2P audio
 - Auth: Solana wallet signature (Phantom, Backpack, Solflare)
 
@@ -57,48 +57,31 @@ chmod 755 uploads/avatars
 
 Get your Supabase **Connection String** (Settings → Database → Connection string → URI mode).
 
-### 2. Environment Variables (PHP)
-Set on your server or .env:
+### 2. Supabase Realtime (signaling)
+Calls and rooms signal over Supabase Realtime: there's no WebSocket server to run.
+- Running `schema.sql` creates the Realtime access policy and turns on row-level security for every table. **This step is required.** The browser gets your anon key, and without RLS that key could read tables such as `sessions` through Supabase's REST API.
+- Recommended: Project Settings → Realtime → turn **off** "Allow public access", so only private (authorized) channels work.
+
+### 3. Environment Variables (PHP)
 ```
-DATABASE_URL=postgres://postgres:[password]@db.[ref].supabase.co:5432/postgres
+DATABASE_URL=postgres://...            # Supabase → Connect → Session pooler URI
+SUPABASE_URL=https://<ref>.supabase.co
+SUPABASE_ANON_KEY=...                  # Project Settings → API Keys → anon / publishable key
+SUPABASE_JWT_SECRET=...                # Project Settings → JWT Keys → Legacy JWT secret (HS256)
+SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=...
+METERED_API_KEY=...                    # TURN relay (optional but recommended)
 ```
+`SUPABASE_JWT_SECRET` signs the short-lived token that lets each wallet listen on its own private channels (`api/realtime.php`). Keep it server-side only.
 
-### 3. Signaling Server (VPS required)
-```bash
-cd /path/to/wavr
-composer install
-php signaling/server.php
-```
-Run with supervisor for production. Update the WebSocket URL in js/signaling.js to match your VPS domain.
-
-### 4. Deploy PHP API
-Upload to any PHP 8+ host (shared hosting works for the API). Point signaling server to a VPS or dedicated server (Fly.io, Railway, DigitalOcean).
-
-### 5. Update signaling URL
-In `js/signaling.js`, line 7 — update port/host to match your signaling server.
-
-## Deploy on Railway (one service)
-The `Dockerfile` runs the web pages, PHP API **and** the signaling server in a single container (`start.sh`), so you only pay for one service.
-
-1. railway.com → New Project → Deploy from GitHub repo → pick this repo (and branch).
-2. **Variables** tab:
-   - `DATABASE_URL`: Supabase → Connect → **Session pooler** URI (the direct `db.xxx.supabase.co` host is IPv6-only and fails from Railway)
-   - `SOLANA_RPC_URL`: your Helius URL
-   - `METERED_API_KEY` (+ `METERED_APP_NAME` if not `wavr`): TURN relay
-3. **Settings → Networking**: generate **two** domains:
-   - one targeting port **8000**: the app (open this in the browser)
-   - one targeting port **8080**: signaling
-   Then add a variable `SIGNAL_HOST` = the signaling domain (e.g. `wavr-signal.up.railway.app`, no `https://`). Also set `PORT=8000` so the app listens on the port its domain targets.
-4. **Volume**: attach one mounted at `/app/uploads` so profile photos survive redeploys.
-5. Run `schema.sql` in Supabase if you haven't.
+### 4. Deploy
+Any PHP 8+ host with `pdo_pgsql`, `curl` and `sodium`, or use the `Dockerfile` (`start.sh` runs PHP's built-in server behind `router.php`). Only short HTTP requests now, so no always-on process is needed.
 
 ## Trench Rooms (token-gated voice rooms)
 Live audio rooms per Solana token: only wallets holding the token (optionally at least a minimum amount) can enter.
 
-- **Setup:** re-run `schema.sql`. It adds the `rooms` and `room_passes` tables plus 4 starter rooms (BONK, WIF, POPCAT, JUP).
+- **Setup:** re-run `schema.sql`. It adds the `rooms` and `room_members` tables plus 4 starter rooms (BONK, WIF, POPCAT, JUP).
 - **Env:** `SOLANA_RPC_URL`: a dedicated RPC (Helius, QuickNode, Triton). The public mainnet RPC rate-limits balance checks quickly.
-- **Restart the signaling server** after deploying. Room membership lives in `signaling/server.php`.
-- **How gating works:** `api/rooms.php?action=join` reads the wallet's on-chain balance and issues a single-use, 2-minute pass, which the signaling server consumes on `room_join`.
+- **How gating works:** `api/rooms.php?action=join` reads the wallet's on-chain balance; only then does it add the wallet to `room_members`, which is what the Realtime policy checks before letting anyone listen on `room:<id>`. All room messages are sent through `api/signal.php`, which only relays between members.
 - **Audio** is a P2P mesh (`js/room.js`), capped at 10 people per room. Bigger rooms need an SFU (e.g. LiveKit).
 - **Market data** (price, 24h change, logo) comes from the DexScreener public API.
 

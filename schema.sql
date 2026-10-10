@@ -38,21 +38,63 @@ create table if not exists rooms (
   token_image     text,
   min_balance     numeric not null default 0,
   creator_address text not null,
-  live_count      int not null default 0,
   created_at      timestamp default now(),
   last_active     timestamp default now()
 );
 create index if not exists rooms_mint_idx on rooms(mint);
-create index if not exists rooms_live_idx on rooms(live_count desc, last_active desc);
 
--- Short-lived, single-use passes: api/rooms.php issues one after verifying
--- the wallet's on-chain balance, the signaling server consumes it on join.
-create table if not exists room_passes (
-  token          text primary key,
+-- Who is in which room right now. A row is only written by api/rooms.php
+-- after the on-chain balance check, and it's what unlocks the room's private
+-- Realtime channel (see wavr_can_listen below). One room per wallet.
+create table if not exists room_members (
+  wallet_address text primary key,
   room_id        uuid not null references rooms(id) on delete cascade,
-  wallet_address text not null,
-  expires_at     timestamp not null
+  muted          boolean not null default true,
+  joined_at      timestamptz not null default now(),
+  last_seen      timestamptz not null default now(),
+  last_chat_at   timestamptz
 );
+create index if not exists room_members_room_idx on room_members(room_id, last_seen);
+
+-- Leftovers from the old Ratchet signaling server.
+drop table if exists room_passes;
+alter table rooms drop column if exists live_count;
+
+-- ── Lock down direct access ──
+-- The browser now holds the Supabase anon key (for Realtime), which also
+-- unlocks Supabase's auto-generated REST API. With RLS on and no policies,
+-- that API can't read or write these tables. The PHP API connects as the
+-- table owner, which bypasses RLS, so it keeps working.
+alter table users        enable row level security;
+alter table sessions     enable row level security;
+alter table call_logs    enable row level security;
+alter table rooms        enable row level security;
+alter table room_members enable row level security;
+
+-- ── Realtime authorization ──
+-- Clients only ever LISTEN (all sends go through api/signal.php). A wallet
+-- may listen on its own inbox, and on a room channel while it's a member.
+-- The JWT is minted by api/realtime.php with sub = wallet address.
+create or replace function public.wavr_can_listen(topic text)
+returns boolean
+language sql stable security definer
+set search_path = public
+as $
+  select case
+    when coalesce(auth.jwt()->>'sub', '') = '' then false
+    when topic = 'inbox:' || (auth.jwt()->>'sub') then true
+    when topic like 'room:%' then exists (
+      select 1 from room_members m
+      where 'room:' || m.room_id::text = topic
+        and m.wallet_address = auth.jwt()->>'sub')
+    else false
+  end
+$;
+
+drop policy if exists "wavr listen" on realtime.messages;
+create policy "wavr listen" on realtime.messages
+  for select to authenticated
+  using ( public.wavr_can_listen(realtime.topic()) );
 
 -- Starter rooms for the biggest Solana community tokens, so the Trench tab
 -- isn't empty on day one. Safe to re-run: each is inserted only once.

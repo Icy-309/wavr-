@@ -132,8 +132,8 @@
 
 <div id="toasts"></div>
 
-<!-- Signaling host comes from the SIGNAL_HOST env var (see api/config.php) -->
-<script src="/api/config.php"></script>
+<!-- Signaling runs over Supabase Realtime (see js/signaling.js) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/signaling.js"></script>
 <script src="js/webrtc.js"></script>
@@ -268,9 +268,11 @@
       renderSpeakers()
     },
     onPeerJoined: (p) => {
-      members.set(p.address, { ...p, state: 'connecting' })
+      // Can fire twice for one person (their offer may beat the join notice); announce once.
+      const known = members.get(p.address)
+      members.set(p.address, { ...known, ...p, username: p.username || (known && known.username) || null, state: known ? known.state : 'connecting' })
       renderSpeakers()
-      sysMsg(`@${p.username || UI.short(p.address)} joined`)
+      if(!known) sysMsg(`@${p.username || UI.short(p.address)} joined`)
     },
     onPeerLeft: (a) => {
       const m = members.get(a)

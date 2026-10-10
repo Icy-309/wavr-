@@ -6,8 +6,9 @@
  * GET  /api/rooms.php?action=get&id=     one room + live market stats
  * GET  /api/rooms.php?action=token&mint= token info for the create form
  * POST /api/rooms.php?action=create      {mint, title, min_balance}
- * POST /api/rooms.php?action=join        {room_id} → verifies on-chain balance, returns a pass
- *                                        the signaling server consumes on room_join
+ * POST /api/rooms.php?action=join        {room_id} → verifies on-chain balance, adds the wallet
+ *                                        to room_members (which unlocks the room's private
+ *                                        Realtime channel) and returns who's already there
  */
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -20,9 +21,13 @@ if($_SERVER['REQUEST_METHOD']==='OPTIONS'){http_response_code(204);exit;}
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/solana.php';
+require_once __DIR__ . '/realtime_lib.php';
 
 const MAX_ROOMS_PER_CREATOR = 5;
-const PASS_TTL_SECONDS      = 120;
+
+// Live head-count = members whose heartbeat is fresh (see realtime_lib.php).
+const LIVE_COUNT_SQL = "(SELECT COUNT(*) FROM room_members m WHERE m.room_id = r.id
+                         AND m.last_seen > NOW() - make_interval(secs => " . ROOM_STALE_SECONDS . "))::int AS live_now";
 
 $pdo    = getDB();
 $action = $_GET['action'] ?? '';
@@ -44,7 +49,7 @@ function roomRow($r){
     'min_balance'  => (float)$r['min_balance'],
     'creator'      => $r['creator_address'],
     'creator_username' => $r['creator_username'] ?? null,
-    'live_count'   => (int)$r['live_count'],
+    'live_count'   => (int)$r['live_now'],
     'created_at'   => $r['created_at'],
   ];
 }
@@ -55,7 +60,7 @@ if($_SERVER['REQUEST_METHOD']==='GET'){
   if($action === 'get'){
     $id = $_GET['id'] ?? '';
     if(!preg_match('/^[0-9a-f-]{36}$/', $id)) fail(400, 'Invalid room id');
-    $s = $pdo->prepare("SELECT r.*, u.username AS creator_username FROM rooms r
+    $s = $pdo->prepare("SELECT r.*, u.username AS creator_username, " . LIVE_COUNT_SQL . " FROM rooms r
                         LEFT JOIN users u ON u.wallet_address=r.creator_address WHERE r.id=?");
     $s->execute([$id]);
     $r = $s->fetch();
@@ -79,14 +84,14 @@ if($_SERVER['REQUEST_METHOD']==='GET'){
   $mint = trim($_GET['mint'] ?? '');
   if($mint !== ''){
     if(!preg_match(WAVR_ADDR_RE, $mint)) fail(400, 'Invalid token address');
-    $s = $pdo->prepare("SELECT r.*, u.username AS creator_username FROM rooms r
+    $s = $pdo->prepare("SELECT r.*, u.username AS creator_username, " . LIVE_COUNT_SQL . " FROM rooms r
                         LEFT JOIN users u ON u.wallet_address=r.creator_address
-                        WHERE r.mint=? ORDER BY r.live_count DESC, r.last_active DESC LIMIT 50");
+                        WHERE r.mint=? ORDER BY live_now DESC, r.last_active DESC LIMIT 50");
     $s->execute([$mint]);
   } else {
-    $s = $pdo->query("SELECT r.*, u.username AS creator_username FROM rooms r
+    $s = $pdo->query("SELECT r.*, u.username AS creator_username, " . LIVE_COUNT_SQL . " FROM rooms r
                       LEFT JOIN users u ON u.wallet_address=r.creator_address
-                      ORDER BY r.live_count DESC, r.last_active DESC LIMIT 50");
+                      ORDER BY live_now DESC, r.last_active DESC LIMIT 50");
   }
   $rooms = array_map('roomRow', $s->fetchAll());
   // Live price / 24h change for every token on screen, in one upstream call.
@@ -157,11 +162,21 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
       ]);
     }
 
-    $pdo->prepare("DELETE FROM room_passes WHERE expires_at < NOW()")->execute();
-    $pass = bin2hex(random_bytes(24));
-    $pdo->prepare("INSERT INTO room_passes (token,room_id,wallet_address,expires_at) VALUES (?,?,?,?)")
-        ->execute([$pass, $id, $addr, date('Y-m-d H:i:s', time() + PASS_TTL_SECONDS)]);
-    echo json_encode(['pass'=>$pass, 'balance'=>$bal]);
+    pruneRoom($pdo, $id);
+    $peers = roomPeers($pdo, $id, $addr);
+    if(count($peers) >= ROOM_MAX) fail(409, 'Room is full');
+
+    // One room at a time: leaving the previous one tells its members.
+    if(currentRoom($pdo, $addr) !== $id) leaveRoom($pdo, $addr);
+    $pdo->prepare("INSERT INTO room_members (wallet_address, room_id, muted, joined_at, last_seen)
+                   VALUES (?, ?, true, NOW(), NOW())
+                   ON CONFLICT (wallet_address) DO UPDATE SET room_id=EXCLUDED.room_id, muted=true, last_seen=NOW()")
+        ->execute([$addr, $id]);
+    $pdo->prepare("UPDATE rooms SET last_active=NOW() WHERE id=?")->execute([$id]);
+
+    $me = profileOf($pdo, $addr);
+    rtRoom($pdo, $id, ['type'=>'room_peer_joined', 'peer'=>['address'=>$addr, 'username'=>$me['username'], 'avatar'=>$me['avatar'], 'muted'=>true]]);
+    echo json_encode(['balance'=>$bal, 'peers'=>$peers]);
     exit;
   }
 }
