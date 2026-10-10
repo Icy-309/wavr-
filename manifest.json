@@ -1,7 +1,7 @@
 {
-  "name": "Wavr \u2014 Web3 Calling",
+  "name": "Wavr — Voice for the Trenches",
   "short_name": "Wavr",
-  "description": "Anonymous P2P voice calls on Solana. No phone number. No email. Just your wallet.",
+  "description": "Voice for the trenches. Call any Solana wallet by @handle and join live rooms only verified holders can enter. No phone number, no email.",
   "start_url": "/index.html",
   "display": "standalone",
   "background_color": "#0a0a0a",
