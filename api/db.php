@@ -51,12 +51,30 @@ function getDB($forceNew = false){
   $sslmode = getenv("DB_SSLMODE") ?: "require"; // use prefer for local dev
   $dsn = "pgsql:host={$host};port={$port};dbname={$dbname};sslmode={$sslmode}";
 
-  $pdo = new PDO($dsn, $user, $pass, [
+  $opts = [
     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_EMULATE_PREPARES   => false,
-  ]);
+    // Emulated (client-side, still properly quoted) prepares: one round trip per
+    // query instead of two (prepare + execute). Matters a lot far from the DB.
+    PDO::ATTR_EMULATE_PREPARES   => true,
+  ];
 
+  // Persistent connections: the TLS + auth handshake to Supabase's pooler
+  // costs ~1s from far away, and signaling (api/signal.php) is now many
+  // small requests, so reconnecting on every one made call setup sluggish.
+  // A reused connection may have been dropped by the pooler while idle, so
+  // ping it once and fall back to a fresh one. Set DB_PERSISTENT=0 to disable.
+  if(!$forceNew && getenv('DB_PERSISTENT') !== '0'){
+    try {
+      $pdo = new PDO($dsn, $user, $pass, $opts + [PDO::ATTR_PERSISTENT => true]);
+      $pdo->query('SELECT 1');
+      return $pdo;
+    } catch(\Throwable $e){
+      $pdo = null;
+    }
+  }
+
+  $pdo = new PDO($dsn, $user, $pass, $opts);
   return $pdo;
 }
 

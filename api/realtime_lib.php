@@ -16,9 +16,25 @@ require_once __DIR__ . '/db.php';
 const ROOM_STALE_SECONDS = 70;
 const ROOM_MAX           = 10;   // P2P mesh: every member uploads to every other member
 
+// Messages are buffered and published together by rtFlush(): one query per
+// request instead of one per message (each query is a full round trip to
+// the database). Order is preserved. A shutdown hook flushes anything left,
+// including after an early exit.
 function rtSend(PDO $pdo, $topic, array $payload){
-  $pdo->prepare("SELECT realtime.send(CAST(? AS jsonb), 'sig', ?, true)")
-      ->execute([json_encode($payload), $topic]);
+  static $hooked = false;
+  $GLOBALS['__rt_outbox'][] = [$topic, $payload];
+  if(!$hooked){ $hooked = true; register_shutdown_function(fn() => rtFlush($pdo)); }
+}
+
+function rtFlush(PDO $pdo){
+  $out = $GLOBALS['__rt_outbox'] ?? [];
+  $GLOBALS['__rt_outbox'] = [];
+  if(!$out) return;
+  $rows = array_map(fn($m) => ['t' => $m[0], 'p' => $m[1]], $out);
+  $pdo->prepare("SELECT realtime.send(e.v->'p', 'sig', e.v->>'t', true)
+                 FROM jsonb_array_elements(CAST(? AS jsonb)) WITH ORDINALITY AS e(v, n)
+                 ORDER BY e.n")
+      ->execute([json_encode($rows)]);
 }
 
 function rtInbox(PDO $pdo, $wallet, array $payload){ rtSend($pdo, 'inbox:' . $wallet, $payload); }
@@ -50,7 +66,7 @@ function roomPeers(PDO $pdo, $roomId, $exceptWallet = null){
   $out = [];
   foreach($s->fetchAll() as $r){
     if($r['wallet_address'] === $exceptWallet) continue;
-    $out[] = ['address'=>$r['wallet_address'], 'username'=>$r['username'], 'avatar'=>$r['avatar_url'], 'muted'=>(bool)$r['muted']];
+    $out[] = ['address'=>$r['wallet_address'], 'username'=>$r['username'], 'avatar'=>$r['avatar_url'], 'muted'=>in_array($r['muted'], [true, 't', 'true', 1, '1'], true)];
   }
   return $out;
 }

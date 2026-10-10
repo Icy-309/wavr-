@@ -107,4 +107,5 @@ foreach($msgs as $m){
   }
 }
 
+rtFlush($pdo);   // publish the whole batch in one query
 echo json_encode($errors ? ['ok'=>true, 'errors'=>$errors] : ['ok'=>true]);
