@@ -77,6 +77,21 @@ Upload to any PHP 8+ host (shared hosting works for the API). Point signaling se
 ### 5. Update signaling URL
 In `js/signaling.js`, line 7 — update port/host to match your signaling server.
 
+## Deploy on Railway (one service)
+The `Dockerfile` runs the web pages, PHP API **and** the signaling server in a single container (`start.sh`), so you only pay for one service.
+
+1. railway.com → New Project → Deploy from GitHub repo → pick this repo (and branch).
+2. **Variables** tab:
+   - `DATABASE_URL`: Supabase → Connect → **Session pooler** URI (the direct `db.xxx.supabase.co` host is IPv6-only and fails from Railway)
+   - `SOLANA_RPC_URL`: your Helius URL
+   - `METERED_API_KEY` (+ `METERED_APP_NAME` if not `wavr`): TURN relay
+3. **Settings → Networking**: generate **two** domains:
+   - one targeting port **8000**: the app (open this in the browser)
+   - one targeting port **8080**: signaling
+   Then add a variable `SIGNAL_HOST` = the signaling domain (e.g. `wavr-signal.up.railway.app`, no `https://`). Also set `PORT=8000` so the app listens on the port its domain targets.
+4. **Volume**: attach one mounted at `/app/uploads` so profile photos survive redeploys.
+5. Run `schema.sql` in Supabase if you haven't.
+
 ## Trench Rooms (token-gated voice rooms)
 Live audio rooms per Solana token: only wallets holding the token (optionally at least a minimum amount) can enter.
 

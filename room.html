@@ -132,11 +132,8 @@
 
 <div id="toasts"></div>
 
-<script>
-  // TEMPORARY — Cloudflare quick-tunnel testing config. See app.html for context.
-  window.WAVR_SIGNAL_HOST = 'perspectives-thriller-donated-here.trycloudflare.com'
-  window.WAVR_SIGNAL_PORT = 443
-</script>
+<!-- Signaling host comes from the SIGNAL_HOST env var (see api/config.php) -->
+<script src="/api/config.php"></script>
 <script src="js/ui.js"></script>
 <script src="js/signaling.js"></script>
 <script src="js/webrtc.js"></script>
