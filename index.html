@@ -341,7 +341,7 @@ async function connectWallet(name){
     // Get nonce
     const nr = await fetch('/api/auth.php?action=nonce&address='+pubkey)
     const nd = await nr.json()
-    if(!nd.nonce) throw new Error('Nonce failed')
+    if(!nd.nonce) throw new Error(nd.error || 'Nonce failed')
 
     // Sign message
     const msg = `Sign in to Wavr: ${nd.nonce}`
@@ -420,7 +420,7 @@ async function completeAuth(pubkey, sigHex, nonce){
     try {
       const nr = await fetch('/api/auth.php?action=nonce&address=' + result.walletAddress)
       const nd = await nr.json()
-      if(!nd.nonce) throw new Error('Nonce failed')
+      if(!nd.nonce) throw new Error(nd.error || 'Nonce failed')
       WavrPhantomDeeplink.requestSignMessage(result.walletAddress, `Sign in to Wavr: ${nd.nonce}`, nd.nonce)
       // Page navigates away to the Phantom app here — nothing more runs.
     } catch(err){

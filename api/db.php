@@ -12,7 +12,10 @@ set_exception_handler(function($e){
     http_response_code(500);
     header('Content-Type: application/json');
   }
-  echo json_encode(['error' => 'Server error']);
+  // Name the one failure that's common and fixable from config (wrong
+  // DATABASE_URL / password); keep everything else generic.
+  $dbDown = $e instanceof PDOException && str_contains($e->getMessage(), 'SQLSTATE[08');
+  echo json_encode(['error' => $dbDown ? 'Database connection failed' : 'Server error']);
 });
 
 /**
