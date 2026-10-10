@@ -79,7 +79,7 @@ create or replace function public.wavr_can_listen(topic text)
 returns boolean
 language sql stable security definer
 set search_path = public
-as $
+as $$
   select case
     when coalesce(auth.jwt()->>'sub', '') = '' then false
     when topic = 'inbox:' || (auth.jwt()->>'sub') then true
@@ -89,7 +89,7 @@ as $
         and m.wallet_address = auth.jwt()->>'sub')
     else false
   end
-$;
+$$;
 
 drop policy if exists "wavr listen" on realtime.messages;
 create policy "wavr listen" on realtime.messages
