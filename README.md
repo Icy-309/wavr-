@@ -73,8 +73,13 @@ METERED_API_KEY=...                    # TURN relay (optional but recommended)
 ```
 `SUPABASE_JWT_SECRET` signs the short-lived token that lets each wallet listen on its own private channels (`api/realtime.php`). Keep it server-side only.
 
-### 4. Deploy
-Any PHP 8+ host with `pdo_pgsql`, `curl` and `sodium`, or use the `Dockerfile` (`start.sh` runs PHP's built-in server behind `router.php`). Only short HTTP requests now, so no always-on process is needed.
+### 4. Deploy on Render (free)
+`render.yaml` + `Dockerfile` deploy the whole app as one free web service: no always-on process is needed, since signaling runs on Supabase Realtime.
+1. render.com → **New → Blueprint** → connect GitHub → pick this repo. It reads `render.yaml`.
+2. Fill in the secret env vars it asks for (same as above, plus `SUPABASE_SERVICE_KEY` = Supabase **secret** key, used to upload avatars to Storage). Set secrets only in Render, never in git.
+3. Deploy. Your app is at `https://<name>.onrender.com`.
+
+Free-tier behaviour: the service sleeps after ~15 min idle and the next request takes ~30-60s to wake it. Incoming calls still arrive (users listen on Supabase, not on Render), but the first action after a quiet period is slow. Avatars live in Supabase Storage, so redeploys don't lose them.
 
 ## Trench Rooms (token-gated voice rooms)
 Live audio rooms per Solana token: only wallets holding the token (optionally at least a minimum amount) can enter.

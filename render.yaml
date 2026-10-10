@@ -1,0 +1,25 @@
+# Render Blueprint: Dashboard → New → Blueprint → pick this repo.
+# Secrets are marked sync: false, so Render asks for them during setup;
+# they never go in git.
+services:
+  - type: web
+    name: wavr
+    runtime: docker
+    plan: free
+    branch: feature/trench-rooms
+    healthCheckPath: /manifest.json
+    envVars:
+      - key: DATABASE_URL          # Supabase → Connect → Session pooler URI
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY     # publishable key
+        sync: false
+      - key: SUPABASE_JWT_SECRET   # legacy JWT secret (HS256)
+        sync: false
+      - key: SUPABASE_SERVICE_KEY  # secret key, for avatar uploads to Storage
+        sync: false
+      - key: SOLANA_RPC_URL
+        sync: false
+      - key: METERED_API_KEY
+        sync: false

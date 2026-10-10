@@ -107,3 +107,10 @@ from (values
   ('JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',  'Jupiter Planetary', 'JUP',    'Jupiter',         50)
 ) as v(mint, title, symbol, name, min_balance)
 where not exists (select 1 from rooms r where r.mint = v.mint and r.creator_address = 'wavr');
+
+-- ── Avatar storage ──
+-- Public-read bucket for profile photos. Only the PHP API writes to it
+-- (with the secret key, set as SUPABASE_SERVICE_KEY), so no write policies.
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;

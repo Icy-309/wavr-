@@ -84,27 +84,52 @@ imagefill($out, 0, 0, $white);
 imagecopyresampled($out, $img, 0, 0, $ox, $oy, 300, 300, $size, $size);
 imagedestroy($img);
 
-// Save to uploads/avatars/
-$uploadDir = __DIR__ . '/../uploads/avatars/';
-if(!is_dir($uploadDir)){
-  if(!mkdir($uploadDir, 0755, true)){
-    echo json_encode(['error'=>'Cannot create upload directory']); exit;
-  }
-}
-
 // Filename = sha256 of wallet address (no PII in filename)
 $filename = hash('sha256', $walletAddr) . '.jpg';
-$filepath = $uploadDir . $filename;
 
-$saved = imagejpeg($out, $filepath, 88);
+ob_start();
+$encoded = imagejpeg($out, null, 88);
+$jpeg    = ob_get_clean();
 imagedestroy($out);
+if(!$encoded || !$jpeg){ echo json_encode(['error'=>'Failed to encode image']); exit; }
 
-if(!$saved || !file_exists($filepath)){
-  echo json_encode(['error'=>'Failed to save image. Check uploads/avatars/ is writable.']); exit;
+// Supabase Storage when a secret key is configured (hosted deploys, where the
+// local disk is wiped on redeploy); local uploads/avatars/ otherwise (dev).
+$sbUrl = rtrim(getenv('SUPABASE_URL') ?: '', '/');
+$sbKey = getenv('SUPABASE_SERVICE_KEY') ?: '';
+if($sbUrl && $sbKey){
+  $headers = ['apikey: ' . $sbKey, 'Content-Type: image/jpeg', 'Cache-Control: max-age=60', 'x-upsert: true'];
+  // New-style secret keys (sb_secret_…) aren't JWTs and go in apikey only;
+  // a legacy service_role key (a JWT) also needs to be the bearer token.
+  if(!str_starts_with($sbKey, 'sb_')) $headers[] = 'Authorization: Bearer ' . $sbKey;
+  $ch = curl_init("$sbUrl/storage/v1/object/avatars/$filename");
+  curl_setopt_array($ch, [
+    CURLOPT_POST           => true,
+    CURLOPT_POSTFIELDS     => $jpeg,
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_TIMEOUT        => 15,
+    CURLOPT_HTTPHEADER     => $headers,
+  ]);
+  $res  = curl_exec($ch);
+  $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+  curl_close($ch);
+  if($code < 200 || $code >= 300){
+    error_log("[Wavr] Avatar upload to Supabase Storage failed ($code): $res");
+    echo json_encode(['error'=>'Failed to store image']); exit;
+  }
+  $avatarUrl = "$sbUrl/storage/v1/object/public/avatars/$filename";
+} else {
+  $uploadDir = __DIR__ . '/../uploads/avatars/';
+  if(!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true)){
+    echo json_encode(['error'=>'Cannot create upload directory']); exit;
+  }
+  if(file_put_contents($uploadDir . $filename, $jpeg) === false){
+    echo json_encode(['error'=>'Failed to save image. Check uploads/avatars/ is writable.']); exit;
+  }
+  $avatarUrl = '/uploads/avatars/' . $filename;
 }
 
 // Store URL in DB
-$avatarUrl = '/uploads/avatars/' . $filename;
 $pdo = getDB();
 $pdo->prepare("UPDATE users SET avatar_url=? WHERE wallet_address=?")
     ->execute([$avatarUrl, $walletAddr]);
