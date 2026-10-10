@@ -77,6 +77,16 @@ Upload to any PHP 8+ host (shared hosting works for the API). Point signaling se
 ### 5. Update signaling URL
 In `js/signaling.js`, line 7 — update port/host to match your signaling server.
 
+## Trench Rooms (token-gated voice rooms)
+Live audio rooms per Solana token: only wallets holding the token (optionally at least a minimum amount) can enter.
+
+- **Setup:** re-run `schema.sql`. It adds the `rooms` and `room_passes` tables plus 4 starter rooms (BONK, WIF, POPCAT, JUP).
+- **Env:** `SOLANA_RPC_URL`: a dedicated RPC (Helius, QuickNode, Triton). The public mainnet RPC rate-limits balance checks quickly.
+- **Restart the signaling server** after deploying. Room membership lives in `signaling/server.php`.
+- **How gating works:** `api/rooms.php?action=join` reads the wallet's on-chain balance and issues a single-use, 2-minute pass, which the signaling server consumes on `room_join`.
+- **Audio** is a P2P mesh (`js/room.js`), capped at 10 people per room. Bigger rooms need an SFU (e.g. LiveKit).
+- **Market data** (price, 24h change, logo) comes from the DexScreener public API.
+
 ## Color Palette
 - Background: #0a0a0a
 - Accent: #F97316 (Burnt Orange)

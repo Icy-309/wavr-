@@ -28,10 +28,23 @@ class WavrSignaling implements MessageComponentInterface {
   protected $connMap; // resourceId => address
   protected $pdo;
 
+  // ── Trench Rooms state ──
+  // Audio is a full WebRTC mesh between room members (every member sends to
+  // every other), so rooms are capped — past ~10 speakers each phone's
+  // upload bandwidth becomes the bottleneck. Scaling further needs an SFU.
+  const ROOM_MAX = 10;
+  protected $rooms      = []; // roomId => [address => true]
+  protected $memberRoom = []; // address => roomId
+  protected $profiles   = []; // address => ['username'=>..,'avatar'=>..,'muted'=>bool]
+  protected $lastChat   = []; // address => microtime of last chat message
+
   public function __construct(){
     $this->clients = [];
     $this->connMap = [];
     $this->pdo     = getDB();
+    // Nobody can be in a room right after a restart.
+    try { $this->pdo->exec("UPDATE rooms SET live_count=0 WHERE live_count<>0"); }
+    catch(\Throwable $e){ echo "[Wavr] Could not reset room counts: ".$e->getMessage()."\n"; }
     echo "[Wavr] Signaling server started\n";
   }
 
@@ -83,6 +96,7 @@ class WavrSignaling implements MessageComponentInterface {
       $old = $this->clients[$address];
       unset($this->connMap[$old->resourceId]);
       $old->close();
+      $this->leaveRoom($address);
     }
 
     $this->clients[$address]              = $conn;
@@ -140,6 +154,138 @@ class WavrSignaling implements MessageComponentInterface {
       case 'end':
         $this->relay($to, ['type'=>'call_ended','from'=>$fromAddr]);
         break;
+
+      // ── Trench Rooms ──
+      case 'room_join':
+        $this->joinRoom($from, $fromAddr, $msg['room_id'] ?? '', $msg['pass'] ?? '');
+        break;
+      case 'room_leave':
+        $this->leaveRoom($fromAddr);
+        break;
+      case 'room_offer':
+      case 'room_answer':
+      case 'room_ice':
+        // Only relay between two members of the same room.
+        $roomId = $this->memberRoom[$fromAddr] ?? null;
+        if($roomId && $to && isset($this->rooms[$roomId][$to])){
+          $out = ['type'=>$msg['type'], 'from'=>$fromAddr];
+          if($msg['type'] === 'room_ice') $out['candidate'] = $msg['candidate'] ?? null;
+          else                            $out['sdp']       = $msg['sdp'] ?? null;
+          $this->relay($to, $out);
+        }
+        break;
+      case 'room_chat':
+        $roomId = $this->memberRoom[$fromAddr] ?? null;
+        $text   = trim(mb_substr((string)($msg['text'] ?? ''), 0, 500));
+        if(!$roomId || $text === '') break;
+        $now = microtime(true);
+        if($now - ($this->lastChat[$fromAddr] ?? 0) < 0.7) break; // simple flood guard
+        $this->lastChat[$fromAddr] = $now;
+        $this->broadcastRoom($roomId, [
+          'type'     => 'room_chat',
+          'from'     => $fromAddr,
+          'username' => $this->profiles[$fromAddr]['username'] ?? null,
+          'text'     => $text,
+          'ts'       => (int)($now * 1000),
+        ]);
+        break;
+      case 'room_mute':
+        $roomId = $this->memberRoom[$fromAddr] ?? null;
+        if(!$roomId) break;
+        $muted = !empty($msg['muted']);
+        $this->profiles[$fromAddr]['muted'] = $muted;
+        $this->broadcastRoom($roomId, ['type'=>'room_peer_muted','address'=>$fromAddr,'muted'=>$muted], $fromAddr);
+        break;
+    }
+  }
+
+  protected function joinRoom(ConnectionInterface $conn, $addr, $roomId, $pass){
+    if(!preg_match('/^[0-9a-f-]{36}$/', $roomId) || !$pass){
+      $conn->send(json_encode(['type'=>'room_error','message'=>'Invalid room or pass']));
+      return;
+    }
+    if(count($this->rooms[$roomId] ?? []) >= self::ROOM_MAX && !isset($this->rooms[$roomId][$addr])){
+      $conn->send(json_encode(['type'=>'room_error','message'=>'Room is full']));
+      return;
+    }
+
+    // Passes are single-use and short-lived; api/rooms.php only issues one
+    // after checking the wallet's on-chain balance against the room's gate.
+    try {
+      $row = $this->withDB(function($pdo) use ($pass, $addr, $roomId){
+        $s = $pdo->prepare("DELETE FROM room_passes
+                            WHERE token=? AND wallet_address=? AND room_id=? AND expires_at > NOW()
+                            RETURNING room_id");
+        $s->execute([$pass, $addr, $roomId]);
+        if(!$s->fetch()) return null;
+        $u = $pdo->prepare("SELECT username, avatar_url FROM users WHERE wallet_address=?");
+        $u->execute([$addr]);
+        return $u->fetch() ?: ['username'=>null, 'avatar_url'=>null];
+      });
+    } catch(\Throwable $e){
+      echo "[Wavr] Room join DB error: ".$e->getMessage()."\n";
+      $conn->send(json_encode(['type'=>'room_error','message'=>'Server error']));
+      return;
+    }
+    if(!$row){
+      $conn->send(json_encode(['type'=>'room_error','message'=>'Pass invalid or expired — rejoin']));
+      return;
+    }
+
+    $this->leaveRoom($addr);
+    $this->profiles[$addr] = ['username'=>$row['username'], 'avatar'=>$row['avatar_url'], 'muted'=>true];
+
+    $peers = [];
+    foreach(array_keys($this->rooms[$roomId] ?? []) as $a) $peers[] = $this->peerInfo($a);
+
+    $this->rooms[$roomId][$addr] = true;
+    $this->memberRoom[$addr]     = $roomId;
+
+    $conn->send(json_encode(['type'=>'room_joined','room_id'=>$roomId,'peers'=>$peers]));
+    $this->broadcastRoom($roomId, ['type'=>'room_peer_joined','peer'=>$this->peerInfo($addr)], $addr);
+    $this->updateLiveCount($roomId);
+    echo "[Wavr] Room join: $addr -> $roomId (".count($this->rooms[$roomId])." in room)\n";
+  }
+
+  protected function leaveRoom($addr){
+    $roomId = $this->memberRoom[$addr] ?? null;
+    if(!$roomId) return;
+    unset($this->memberRoom[$addr], $this->rooms[$roomId][$addr], $this->lastChat[$addr]);
+    if(empty($this->rooms[$roomId])) unset($this->rooms[$roomId]);
+    else $this->broadcastRoom($roomId, ['type'=>'room_peer_left','address'=>$addr]);
+    $this->updateLiveCount($roomId);
+    echo "[Wavr] Room leave: $addr <- $roomId\n";
+  }
+
+  protected function peerInfo($addr){
+    $p = $this->profiles[$addr] ?? [];
+    return ['address'=>$addr, 'username'=>$p['username'] ?? null, 'avatar'=>$p['avatar'] ?? null, 'muted'=>$p['muted'] ?? true];
+  }
+
+  protected function broadcastRoom($roomId, $payload, $except = null){
+    foreach(array_keys($this->rooms[$roomId] ?? []) as $a){
+      if($a !== $except) $this->relay($a, $payload);
+    }
+  }
+
+  protected function updateLiveCount($roomId){
+    $n = count($this->rooms[$roomId] ?? []);
+    try {
+      $this->withDB(function($pdo) use ($roomId, $n){
+        $pdo->prepare("UPDATE rooms SET live_count=?, last_active=NOW() WHERE id=?")->execute([$n, $roomId]);
+      });
+    } catch(\Throwable $e){
+      echo "[Wavr] live_count update failed: ".$e->getMessage()."\n";
+    }
+  }
+
+  // Runs a DB operation, reconnecting once on failure — same stale-connection
+  // reasoning as the auth path in onOpen().
+  protected function withDB(callable $fn){
+    try { return $fn($this->pdo); }
+    catch(\Throwable $e){
+      $this->pdo = getDB(true);
+      return $fn($this->pdo);
     }
   }
 
@@ -175,7 +321,10 @@ class WavrSignaling implements MessageComponentInterface {
 
   public function onClose(ConnectionInterface $conn){
     $addr = $this->connMap[$conn->resourceId] ?? null;
-    if($addr) unset($this->clients[$addr]);
+    if($addr){
+      unset($this->clients[$addr]);
+      $this->leaveRoom($addr);
+    }
     unset($this->connMap[$conn->resourceId]);
     echo "[Wavr] Disconnected: ".($addr ?? 'unknown')."\n";
   }

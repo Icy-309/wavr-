@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Wavr — Trench Room</title>
+<link rel="stylesheet" href="css/style.css"/>
+<meta name="theme-color" content="#0a0a0a"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png"/>
+<style>
+  html,body{height:100dvh;overflow:hidden}
+  body{display:flex;flex-direction:column}
+  .glow{position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:radial-gradient(ellipse 90% 50% at 50% 0%, rgba(249,115,22,.12), transparent 60%)}
+
+  /* ── top bar ── */
+  .top{position:relative;z-index:5;display:flex;align-items:center;gap:10px;padding:calc(14px + var(--sat)) 16px 10px;max-width:560px;width:100%;margin:0 auto}
+  .icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--border);background:var(--bg3);color:var(--muted2);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+  .icon-btn:hover{color:var(--white);border-color:var(--bord2)}
+  .ticker{flex:1;min-width:0;display:flex;align-items:center;gap:9px;padding:6px 12px 6px 6px;border-radius:100px;
+    background:var(--bg3);border:1px solid var(--border);text-decoration:none;color:inherit}
+  .ticker .sym{font-weight:700;font-size:.85rem;white-space:nowrap}
+  .ticker .px{font-family:var(--fm);font-size:.78rem;color:var(--muted2);white-space:nowrap}
+  .ticker .ch{font-family:var(--fm);font-size:.75rem;margin-left:auto;white-space:nowrap}
+  .flash-up{animation:flashUp .9s ease}
+  .flash-down{animation:flashDown .9s ease}
+  @keyframes flashUp{0%{color:var(--up)}100%{}}
+  @keyframes flashDown{0%{color:var(--down)}100%{}}
+
+  .head{position:relative;z-index:5;padding:6px 20px 0;max-width:560px;width:100%;margin:0 auto}
+  .head h1{font-family:var(--fd);font-size:1.35rem;font-weight:800;letter-spacing:-.04em;line-height:1.15;overflow-wrap:anywhere}
+  .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:.74rem;color:var(--muted2)}
+  .meta .badge{font-size:.66rem}
+
+  /* ── stage ── */
+  .stage{position:relative;z-index:2;flex:1;min-height:0;display:flex;flex-direction:column;max-width:560px;width:100%;margin:0 auto}
+  .speakers{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:16px 8px;padding:20px 20px 12px}
+  .spk{display:flex;flex-direction:column;align-items:center;gap:7px;animation:scaleIn .35s var(--spring) both;min-width:0}
+  .spk-ava{position:relative;width:64px;height:64px}
+  .spk-ava .ava{width:64px;height:64px;font-size:1.2rem;transition:box-shadow .12s, border-color .12s}
+  .spk-ava .ava img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+  .spk.talking .ava{border-color:var(--acc);box-shadow:0 0 0 3px rgba(249,115,22,.35), 0 0 24px rgba(249,115,22,.45)}
+  .spk-mute{position:absolute;right:-2px;bottom:-2px;width:22px;height:22px;border-radius:50%;background:var(--bg4);border:2px solid var(--bg);
+    display:none;align-items:center;justify-content:center;color:var(--down)}
+  .spk.muted .spk-mute{display:flex}
+  .spk.connecting .ava{opacity:.45}
+  .spk-n{font-size:.75rem;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .spk-n.me{color:var(--acc)}
+
+  /* ── chat ── */
+  .chat{flex:1;min-height:0;overflow-y:auto;padding:4px 20px 12px;display:flex;flex-direction:column;gap:8px;
+    mask-image:linear-gradient(transparent, #000 24px);-webkit-mask-image:linear-gradient(transparent, #000 24px)}
+  .chat-sep{font-family:var(--fm);font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-align:center;padding:10px 0 4px}
+  .msg{font-size:.88rem;line-height:1.45;animation:fadeUp .25s var(--ease-out);overflow-wrap:anywhere}
+  .msg b{font-weight:700;margin-right:6px;color:var(--muted2)}
+  .msg.mine b{color:var(--acc)}
+  .msg.sys{color:var(--muted);font-size:.78rem;font-family:var(--fm)}
+  .ca{display:inline-flex;align-items:center;gap:6px;padding:2px 4px 2px 8px;border-radius:8px;background:var(--a10);border:1px solid var(--a20);
+    font-family:var(--fm);font-size:.76rem;color:var(--acc);vertical-align:middle}
+  .ca button{border:none;background:var(--acc);color:#000;border-radius:6px;padding:3px 7px;font-family:var(--fm);font-size:.66rem;font-weight:600;cursor:pointer}
+  .ca button.alt{background:none;color:var(--acc);border:1px solid var(--a40)}
+
+  /* ── dock ── */
+  .dock{position:relative;z-index:5;display:flex;align-items:center;gap:10px;padding:10px 16px calc(14px + var(--sab));
+    max-width:560px;width:100%;margin:0 auto;border-top:1px solid var(--border);background:rgba(10,10,10,.9)}
+  .mic{width:52px;height:52px;border-radius:50%;border:1px solid var(--bord2);background:var(--bg3);color:var(--muted2);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+  .mic.live{background:var(--acc);border-color:var(--acc);color:#000;box-shadow:0 0 24px rgba(249,115,22,.45)}
+  .mic:disabled{opacity:.35;cursor:not-allowed}
+  .say{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border);border-radius:100px;color:var(--white);
+    font-family:var(--fb);font-size:1rem;padding:13px 16px;outline:none}
+  .say:focus{border-color:var(--acc)}
+  .leave{height:44px;padding:0 16px;border-radius:100px;border:1px solid rgba(244,63,94,.35);background:rgba(244,63,94,.1);color:var(--down);
+    font-family:var(--fb);font-weight:700;font-size:.85rem;cursor:pointer;flex-shrink:0}
+  .leave:hover{background:var(--down);color:#fff}
+
+  /* ── gate / lobby ── */
+  .lobby{position:relative;z-index:5;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+    padding:20px 28px calc(30px + var(--sab));max-width:420px;margin:0 auto;width:100%}
+  .lobby .tok{box-shadow:0 0 0 8px rgba(249,115,22,.06), 0 0 60px rgba(249,115,22,.25)}
+  .lobby h2{font-family:var(--fd);font-size:1.5rem;font-weight:800;letter-spacing:-.04em;margin:22px 0 8px;overflow-wrap:anywhere}
+  .lobby p{color:var(--muted2);font-size:.9rem;line-height:1.5}
+  .gate{display:inline-flex;align-items:center;gap:7px;margin-top:16px;padding:8px 14px;border-radius:100px;background:var(--bg3);border:1px solid var(--bord2);
+    font-family:var(--fm);font-size:.75rem;color:var(--muted2)}
+  .lobby .btn-fill{margin-top:26px}
+  .bal-bar{width:100%;height:8px;border-radius:8px;background:var(--bg4);overflow:hidden;margin:18px 0 8px}
+  .bal-bar i{display:block;height:100%;background:var(--acc);border-radius:8px;transition:width .8s var(--ease-out)}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="glow"></div>
+
+<div class="top">
+  <button class="icon-btn press" id="back" aria-label="Back"><svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button>
+  <a class="ticker press" id="ticker" target="_blank" rel="noopener">
+    <span id="tk-ava"><div class="tok skel" style="width:28px;height:28px"></div></span>
+    <span class="sym" id="tk-sym"></span><span class="px price" id="tk-px"></span><span class="ch" id="tk-ch"></span>
+  </a>
+  <button class="icon-btn press" id="share" aria-label="Share room"><svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7M16 6l-4-4-4 4M12 2v13"/></svg></button>
+</div>
+
+<!-- lobby: shown until the user taps Join (needed to unlock mic + audio) -->
+<section class="lobby" id="lobby">
+  <div id="lb-ava"><div class="tok skel" style="width:92px;height:92px"></div></div>
+  <h2 id="lb-title">&nbsp;</h2>
+  <p id="lb-sub">&nbsp;</p>
+  <div class="gate" id="lb-gate"><svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg><span id="lb-gate-t">Checking gate…</span></div>
+  <div id="lb-denied" class="hidden" style="width:100%"></div>
+  <button class="btn btn-fill press" id="join" disabled>Join room</button>
+  <p style="font-size:.74rem;color:var(--muted);margin-top:12px">You'll join muted. Your balance is checked on-chain.</p>
+</section>
+
+<!-- live room -->
+<section class="stage hidden" id="stage">
+  <div class="head">
+    <h1 id="rm-title"></h1>
+    <div class="meta"><span class="badge badge-g" id="rm-held"><span class="dot"></span><span></span></span><span id="rm-count"></span></div>
+  </div>
+  <div class="speakers" id="speakers"></div>
+  <div class="chat" id="chat"><div class="chat-sep">Room chat · paste a CA to share it</div></div>
+</section>
+
+<div class="dock hidden" id="dock">
+  <button class="mic press" id="mic" aria-label="Unmute"></button>
+  <input class="say" id="say" placeholder="Say something…" maxlength="500" autocomplete="off" enterkeyhint="send"/>
+  <button class="leave press" id="leave">Leave</button>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+  // TEMPORARY — Cloudflare quick-tunnel testing config. See app.html for context.
+  window.WAVR_SIGNAL_HOST = 'perspectives-thriller-donated-here.trycloudflare.com'
+  window.WAVR_SIGNAL_PORT = 443
+</script>
+<script src="js/ui.js"></script>
+<script src="js/signaling.js"></script>
+<script src="js/webrtc.js"></script>
+<script src="js/room.js"></script>
+<script>
+;(function(){
+  const token    = localStorage.getItem('wavr_token')
+  const address  = localStorage.getItem('wavr_address')
+  const username = localStorage.getItem('wavr_username')
+  if(!token || !address){ location.href = 'index.html'; return }
+  if(!username){ location.href = 'register.html'; return }
+
+  const roomId = new URLSearchParams(location.search).get('id') || ''
+  const auth   = { 'Authorization': 'Bearer ' + token }
+  const $      = id => document.getElementById(id)
+  const ADDR_G = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g
+
+  const MIC_ON  = '<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-14 0m7 7v4m-4 0h8M12 15a3 3 0 01-3-3V5a3 3 0 016 0v7a3 3 0 01-3 3z"/></svg>'
+  const MIC_OFF = '<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-1.2 3.9M5 11a7 7 0 0011.5 5.4M12 18v4m-4 0h8M15 9.3V5a3 3 0 00-5.9-.8M9 9v3a3 3 0 004.6 2.5M3 3l18 18"/></svg>'
+  const MUTE_S  = '<svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" d="M3 3l18 18M12 15a3 3 0 01-3-3V9m6 .3V5a3 3 0 00-5.9-.8"/></svg>'
+
+  let room = null, market = null, inRoom = false, lastPrice = null
+  const members = new Map()   // address -> { username, avatar, muted, state }
+
+  const symOf = () => (market && market.symbol) || (room && room.token_symbol) || 'token'
+
+  // ── Load room + live market ──
+  async function loadRoom(){
+    try {
+      const d = await (await fetch('/api/rooms.php?action=get&id=' + encodeURIComponent(roomId), { headers: auth })).json()
+      if(d.error) throw new Error(d.error)
+      room = d.room; market = d.market
+      renderTicker()
+      return true
+    } catch(e){
+      $('lb-title').textContent = 'Room not found'
+      $('lb-sub').textContent = 'It may have been removed.'
+      $('lb-gate').classList.add('hidden')
+      $('join').textContent = 'Back to the Trench'
+      $('join').disabled = false
+      $('join').onclick = () => location.href = 'rooms.html'
+      return false
+    }
+  }
+
+  function renderTicker(){
+    const m = market, s = symOf()
+    $('tk-ava').innerHTML = UI.tokenAva((m && m.image) || room.token_image, s, 28)
+    $('tk-sym').textContent = s
+    if(m){
+      const p = UI.pct(m.change_24h)
+      const px = $('tk-px')
+      px.innerHTML = UI.price(m.price_usd)
+      if(lastPrice != null && m.price_usd !== lastPrice){
+        px.classList.remove('flash-up', 'flash-down'); void px.offsetWidth
+        px.classList.add(m.price_usd > lastPrice ? 'flash-up' : 'flash-down')
+      }
+      lastPrice = m.price_usd
+      $('tk-ch').className = 'ch ' + p.cls
+      $('tk-ch').textContent = p.text + ' 24h'
+      $('ticker').href = m.dex_url || ('https://dexscreener.com/solana/' + room.mint)
+    } else {
+      $('tk-px').textContent = UI.short(room.mint)
+      $('ticker').href = 'https://solscan.io/token/' + room.mint
+    }
+  }
+
+  function renderLobby(){
+    const s = symOf()
+    $('lb-ava').innerHTML = UI.tokenAva((market && market.image) || room.token_image, s, 92)
+    $('lb-title').textContent = room.title
+    $('lb-sub').textContent = room.live_count > 0
+      ? `${room.live_count} ${room.live_count === 1 ? 'holder is' : 'holders are'} talking right now.`
+      : 'Quiet right now. Be the first voice in here.'
+    $('lb-gate-t').textContent = room.min_balance > 0 ? `Hold ${UI.compact(room.min_balance)} ${s} to enter` : `Hold any ${s} to enter`
+  }
+
+  // ── Join ──
+  async function join(){
+    UI.haptic()
+    const btn = $('join')
+    btn.disabled = true
+    btn.innerHTML = '<span class="spin" style="border-color:rgba(0,0,0,.2);border-top-color:#000"></span> Checking your bag…'
+    $('lb-denied').classList.add('hidden')
+    try {
+      await TrenchRoom.enter(roomId, callbacks)
+      inRoom = true
+      $('lobby').classList.add('hidden')
+      $('stage').classList.remove('hidden')
+      $('dock').classList.remove('hidden')
+      $('rm-title').textContent = room.title
+      members.set(address, { username, avatar: localStorage.getItem('wavr_avatar'), muted: true, state: 'connected' })
+      renderSpeakers(); renderMic()
+      sysMsg('You joined muted. Tap the mic to talk.')
+    } catch(e){
+      btn.disabled = false
+      btn.textContent = 'Join room'
+      if(e.data && e.data.gated) showDenied(e.data)
+      else UI.toast('err', e.message || 'Could not join')
+    }
+  }
+
+  function showDenied(d){
+    UI.haptic([30, 40, 30])
+    const s = symOf(), need = d.required || 0, have = d.balance || 0
+    const pctHeld = need > 0 ? Math.min(100, have / need * 100) : 0
+    const el = $('lb-denied')
+    el.classList.remove('hidden')
+    el.innerHTML = `
+      <div class="bal-bar"><i style="width:0%"></i></div>
+      <p style="font-family:var(--fm);font-size:.78rem"><span style="color:var(--white)">${UI.compact(have)}</span> / ${need > 0 ? UI.compact(need) : 'any'} ${UI.esc(s)}</p>
+      <p style="margin-top:6px">${have > 0 ? 'Not enough. Stack a bit more to get in.' : `This wallet doesn't hold ${UI.esc(s)}.`}</p>
+      <a class="btn btn-ghost press" style="margin-top:14px;text-decoration:none" target="_blank" rel="noopener"
+         href="https://jup.ag/swap/SOL-${encodeURIComponent(room.mint)}">Get ${UI.esc(s)} on Jupiter</a>`
+    requestAnimationFrame(() => el.querySelector('.bal-bar i').style.width = pctHeld + '%')
+    $('join').textContent = 'Check again'
+  }
+
+  // ── Room callbacks ──
+  const callbacks = {
+    onBalance: (b) => {
+      const el = $('rm-held')
+      el.querySelector('span:last-child').textContent = `Verified · ${UI.compact(b)} ${symOf()}`
+    },
+    onListenOnly: () => {
+      UI.toast('err', 'No mic access. You\'re in listen-only mode')
+      renderMic()
+    },
+    onJoined: (peers) => {
+      ;[...members.keys()].forEach(a => { if(a !== address) members.delete(a) })
+      peers.forEach(p => members.set(p.address, { ...p, state: 'connecting' }))
+      renderSpeakers()
+    },
+    onPeerJoined: (p) => {
+      members.set(p.address, { ...p, state: 'connecting' })
+      renderSpeakers()
+      sysMsg(`@${p.username || UI.short(p.address)} joined`)
+    },
+    onPeerLeft: (a) => {
+      const m = members.get(a)
+      members.delete(a)
+      renderSpeakers()
+      if(m) sysMsg(`@${m.username || UI.short(a)} left`)
+    },
+    onPeerMuted: (a, muted) => {
+      const m = members.get(a); if(m){ m.muted = muted; updateSpeaker(a) }
+    },
+    onPeerState: (a, state) => {
+      const m = members.get(a); if(m){ m.state = state; updateSpeaker(a) }
+    },
+    onLevels: (levels) => {
+      for(const [a, lv] of Object.entries(levels)){
+        const el = document.querySelector(`.spk[data-a="${a}"]`)
+        if(el) el.classList.toggle('talking', lv > 0.04)
+      }
+    },
+    onChat: (m) => chatMsg(m),
+    onAudioBlocked: () => {
+      UI.toast('err', 'Tap anywhere to hear the room')
+      document.addEventListener('click', () => TrenchRoom.resumeAudio(), { once: true })
+    },
+    onError: (msg) => UI.toast('err', msg),
+  }
+
+  // ── Speakers ──
+  function speakerHtml(a, m){
+    const name = m.username || UI.short(a)
+    const ava = m.avatar ? `<img src="${UI.esc(m.avatar)}" alt="" onerror="this.remove()">` : UI.esc(name.charAt(0).toUpperCase())
+    const cls = ['spk', m.muted ? 'muted' : '', (m.state === 'connecting' || m.state === 'new') && a !== address ? 'connecting' : ''].join(' ')
+    return `<div class="${cls}" data-a="${a}">
+      <div class="spk-ava"><div class="ava">${ava}</div><span class="spk-mute">${MUTE_S}</span></div>
+      <div class="spk-n ${a === address ? 'me' : ''}">${a === address ? 'You' : '@' + UI.esc(name)}</div></div>`
+  }
+  function renderSpeakers(){
+    const list = [...members.entries()].sort(([a], [b]) => (a === address ? -1 : b === address ? 1 : 0))
+    $('speakers').innerHTML = list.map(([a, m]) => speakerHtml(a, m)).join('')
+    $('rm-count').textContent = `${members.size} in room`
+  }
+  function updateSpeaker(a){
+    const el = document.querySelector(`.spk[data-a="${a}"]`), m = members.get(a)
+    if(!el || !m) return
+    el.classList.toggle('muted', !!m.muted)
+    el.classList.toggle('connecting', a !== address && (m.state === 'connecting' || m.state === 'new'))
+  }
+
+  // ── Mic ──
+  function renderMic(){
+    const mic = $('mic')
+    if(!TrenchRoom.hasMic()){ mic.disabled = true; mic.innerHTML = MIC_OFF; mic.setAttribute('aria-label', 'Listen-only'); return }
+    const muted = TrenchRoom.isMuted()
+    mic.classList.toggle('live', !muted)
+    mic.innerHTML = muted ? MIC_OFF : MIC_ON
+    mic.setAttribute('aria-label', muted ? 'Unmute' : 'Mute')
+  }
+  $('mic').onclick = () => {
+    const next = !TrenchRoom.isMuted()
+    if(TrenchRoom.setMuted(next)){
+      UI.haptic(next ? 8 : 18)
+      const me = members.get(address); if(me){ me.muted = next; updateSpeaker(address) }
+      renderMic()
+    }
+  }
+
+  // ── Chat ──
+  const chatEl = $('chat')
+  function nearBottom(){ return chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 80 }
+  function append(node){
+    const stick = nearBottom()
+    chatEl.appendChild(node)
+    while(chatEl.children.length > 200) chatEl.children[1].remove()
+    if(stick) chatEl.scrollTop = chatEl.scrollHeight
+  }
+  function sysMsg(t){
+    const d = document.createElement('div'); d.className = 'msg sys'; d.textContent = t; append(d)
+  }
+  function linkify(text){
+    // Escape first, then turn anything shaped like a Solana address into a CA chip.
+    return UI.esc(text).replace(ADDR_G, ca =>
+      `<span class="ca">${UI.short(ca)}<button data-copy="${ca}">Copy</button><button class="alt" data-trench="${ca}">Rooms</button></span>`)
+  }
+  function chatMsg(m){
+    const d = document.createElement('div')
+    d.className = 'msg' + (m.from === address ? ' mine' : '')
+    d.innerHTML = `<b>${m.from === address ? 'You' : '@' + UI.esc(m.username || UI.short(m.from))}</b>${linkify(m.text)}`
+    append(d)
+  }
+  chatEl.addEventListener('click', (e) => {
+    const c = e.target.closest('[data-copy]'), t = e.target.closest('[data-trench]')
+    if(c) UI.copy(c.dataset.copy, 'CA copied')
+    if(t) window.open('rooms.html#' + t.dataset.trench, '_blank')
+  })
+  $('say').addEventListener('keydown', (e) => {
+    if(e.key !== 'Enter') return
+    const v = e.target.value.trim()
+    if(!v) return
+    TrenchRoom.chat(v); e.target.value = ''
+  })
+
+  // ── Leave / share / back ──
+  async function leave(){
+    if(inRoom && !(await UI.confirm({ title: 'Leave the room?', ok: 'Leave', danger: true }))) return
+    if(inRoom) TrenchRoom.leave()
+    location.href = 'rooms.html'
+  }
+  $('leave').onclick = leave
+  $('back').onclick  = leave
+  $('share').onclick = async () => {
+    const url = location.origin + location.pathname + '?id=' + roomId
+    const text = room ? `${room.title}: live ${symOf()} holders room on Wavr` : 'Join me on Wavr'
+    if(navigator.share){ try { await navigator.share({ title: 'Wavr', text, url }); return } catch(e){ if(e.name === 'AbortError') return } }
+    UI.copy(url, 'Room link copied')
+  }
+  window.addEventListener('pagehide', () => { if(inRoom) TrenchRoom.leave() })
+
+  // ── Boot ──
+  ;(async () => {
+    if(await loadRoom()){
+      renderLobby()
+      $('join').disabled = false
+      $('join').onclick = join
+    }
+    setInterval(async () => {
+      if(document.visibilityState !== 'visible' || !room) return
+      try {
+        const d = await (await fetch('/api/rooms.php?action=get&id=' + encodeURIComponent(roomId), { headers: auth })).json()
+        if(d.market){ market = d.market; renderTicker() }
+        if(d.room && !inRoom){ room = d.room; renderLobby() }
+      } catch(e){}
+    }, 30000)
+  })()
+})()
+</script>
+</body>
+</html>

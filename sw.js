@@ -1,12 +1,16 @@
-const CACHE  = 'wavr-v15'
+const CACHE  = 'wavr-v16'
 const STATIC = [
   '/index.html',
   '/register.html',
   '/app.html',
   '/call.html',
+  '/rooms.html',
+  '/room.html',
   '/css/style.css',
   '/js/signaling.js',
   '/js/webrtc.js',
+  '/js/ui.js',
+  '/js/room.js',
   '/js/install.js',
   '/js/phantom-deeplink.js',
   '/manifest.json',

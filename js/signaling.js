@@ -45,6 +45,7 @@ function connectWS(url){
       while(outgoingQueue.length){
         ws.send(outgoingQueue.shift())
       }
+      if(signalingCallbacks.onOpen) signalingCallbacks.onOpen()
       // Keep the connection from ever sitting idle long enough for the
       // Cloudflare tunnel (or any reverse proxy) to silently close it —
       // that was causing repeated reconnect churn, and a call landing on
@@ -100,7 +101,13 @@ function handleSignalingMessage(msg){
       if(signalingCallbacks.onCallEnded)
         signalingCallbacks.onCallEnded()
       break
+    default:
+      // Trench Rooms traffic (room_joined, room_offer, room_chat, …) — see js/room.js
+      if(msg.type && msg.type.startsWith('room_') && signalingCallbacks.onRoomMessage)
+        signalingCallbacks.onRoomMessage(msg)
   }
+  if(msg.type === 'error' && signalingCallbacks.onSignalError)
+    signalingCallbacks.onSignalError(msg.message)
 }
 
 function sendSig(msg){

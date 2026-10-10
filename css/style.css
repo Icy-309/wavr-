@@ -11,7 +11,7 @@
   --a20:    rgba(249,115,22,0.20);
   --a40:    rgba(249,115,22,0.40);
   --white:  #ffffff;
-  --muted:  #5a5a5a;
+  --muted:  #7a7a7a;
   --muted2: #8a8a8a;
   --border: rgba(255,255,255,0.055);
   --bord2:  rgba(255,255,255,0.11);
@@ -298,3 +298,115 @@ hr.div { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
   margin-top: 18px; font-size: .7rem; color: var(--muted); font-family: var(--fm);
 }
 .sol-credit svg { color: var(--acc); }
+
+/* ═════════════ Shared UI kit (js/ui.js) ═════════════ */
+:root { --up: #22c55e; --down: #f43f5e; --ease-out: cubic-bezier(.22,1,.36,1); --spring: cubic-bezier(.34,1.56,.64,1); }
+
+.up   { color: var(--up); }
+.down { color: var(--down); }
+.mono { font-family: var(--fm); }
+.price sub { font-size: .7em; vertical-align: -.25em; }
+
+/* pressable surfaces get a soft, springy response instead of a hard snap */
+.press { transition: transform .22s var(--spring), border-color .2s, background .2s; }
+.press:active { transform: scale(.97); }
+
+/* ── TAB BAR ── */
+.tabbar {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(12px + var(--sab)); z-index: 200;
+  display: flex; gap: 4px; padding: 6px;
+  background: rgba(22,22,22,.82); border: 1px solid var(--bord2); border-radius: 100px;
+  backdrop-filter: blur(22px) saturate(1.4); -webkit-backdrop-filter: blur(22px) saturate(1.4);
+  box-shadow: 0 12px 40px rgba(0,0,0,.55);
+  animation: tabIn .5s var(--ease-out) both;
+}
+@keyframes tabIn { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.tab {
+  position: relative; display: flex; align-items: center; gap: 7px;
+  padding: 10px 16px; border-radius: 100px; border: none; background: none;
+  color: var(--muted2); font-family: var(--fb); font-size: .82rem; font-weight: 600;
+  cursor: pointer; text-decoration: none; min-height: 44px;
+  transition: color .2s, background .25s var(--ease-out);
+}
+.tab:hover  { color: var(--white); }
+.tab.active { background: var(--acc); color: #000; }
+.tab .tab-live {
+  position: absolute; top: 7px; right: 9px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--down); box-shadow: 0 0 0 2px rgba(22,22,22,.9); display: none;
+}
+.tab .tab-live.on { display: block; animation: livePulse 1.6s ease-in-out infinite; }
+.tab.active .tab-live { box-shadow: 0 0 0 2px var(--acc); }
+@keyframes livePulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.35); } }
+
+/* ── BOTTOM SHEET ── */
+.sheet-bg {
+  position: fixed; inset: 0; z-index: 90500; background: rgba(0,0,0,.6);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  display: flex; align-items: flex-end; justify-content: center;
+  opacity: 0; transition: opacity .25s;
+}
+.sheet-bg.on { opacity: 1; }
+.sheet {
+  width: 100%; max-width: 480px; max-height: 88dvh; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--bg2); border: 1px solid var(--bord2); border-bottom: none;
+  border-radius: 22px 22px 0 0; padding: 12px 20px calc(24px + var(--sab));
+  transform: translateY(100%); transition: transform .38s var(--ease-out);
+}
+.sheet-bg.on .sheet { transform: translateY(0); }
+.sheet .whandle { margin-bottom: 18px; }
+.sheet h3 { font-family: var(--fd); font-size: 1.05rem; font-weight: 700; margin-bottom: 6px; letter-spacing: -.02em; }
+.sheet p.sub { color: var(--muted2); font-size: .88rem; line-height: 1.5; margin-bottom: 18px; }
+.sheet-actions { display: flex; gap: 10px; margin-top: 18px; }
+.sheet-actions .btn { flex: 1; border-radius: 12px; padding: 13px 16px; font-size: .92rem; }
+.btn-danger { background: rgba(244,63,94,.12); color: var(--down); border: 1px solid rgba(244,63,94,.3); }
+.btn-danger:hover { background: var(--down); color: #fff; }
+.sheet-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 14px; border-radius: 12px; background: var(--bg3); border: 1px solid var(--border);
+  color: var(--white); font-family: var(--fb); font-size: .9rem; font-weight: 600; cursor: pointer;
+  margin-bottom: 8px; text-align: left; min-height: 52px;
+}
+.sheet-row:hover { border-color: var(--a40); }
+.sheet-row svg { color: var(--acc); flex-shrink: 0; }
+.sheet-row .grow { flex: 1; min-width: 0; }
+.sheet-row small { display: block; font-family: var(--fm); font-size: .7rem; color: var(--muted2); font-weight: 400; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── TOAST icons ── */
+.toast .t-ico { width: 18px; height: 18px; flex-shrink: 0; display: flex; }
+.toast.ok  .t-ico { color: var(--green); }
+.toast.err .t-ico { color: var(--danger); }
+.toast.out { animation: toastOut .25s ease forwards; }
+@keyframes toastOut { to { opacity: 0; transform: translateY(8px) scale(.97); } }
+
+/* ── SKELETON ── */
+.skel {
+  background: linear-gradient(90deg, var(--bg3) 0%, var(--bg4) 50%, var(--bg3) 100%);
+  background-size: 200% 100%; animation: skel 1.3s ease-in-out infinite; border-radius: 8px;
+}
+@keyframes skel { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* ── TOKEN AVATAR ── */
+.tok {
+  border-radius: 50%; flex-shrink: 0; overflow: hidden; background: var(--bg4);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--fd); font-weight: 800; color: var(--acc); border: 1.5px solid var(--a20);
+}
+.tok img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ── LIVE PILL ── */
+.live-pill {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 100px;
+  background: rgba(244,63,94,.12); color: var(--down); border: 1px solid rgba(244,63,94,.25);
+  font-family: var(--fm); font-size: .62rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+}
+.live-pill::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: livePulse 1.6s ease-in-out infinite; }
+.quiet-pill {
+  display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 100px;
+  background: rgba(255,255,255,.04); color: var(--muted2); border: 1px solid var(--border);
+  font-family: var(--fm); font-size: .62rem; letter-spacing: .04em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

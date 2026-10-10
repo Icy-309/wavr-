@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Wavr — Trench</title>
+<link rel="stylesheet" href="css/style.css"/>
+<link rel="manifest" href="manifest.json"/>
+<meta name="theme-color" content="#0a0a0a"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Wavr"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png"/>
+<style>
+  body{padding-bottom:calc(160px + var(--sab));min-height:100dvh}
+  .glow{position:fixed;top:-30vh;left:50%;width:120vw;height:60vh;transform:translateX(-50%);pointer-events:none;
+    background:radial-gradient(ellipse at center, rgba(249,115,22,.13), transparent 62%);z-index:0}
+  main{position:relative;z-index:1}
+
+  .hero{padding:calc(28px + var(--sat)) 0 18px}
+  .hero h1{font-family:var(--fd);font-size:1.9rem;font-weight:800;letter-spacing:-.045em;line-height:1}
+  .hero h1 em{font-style:normal;color:var(--acc)}
+  .hero p{color:var(--muted2);font-size:.9rem;margin-top:8px;line-height:1.45}
+
+  .search-wrap{position:sticky;top:0;z-index:50;padding:10px 0 12px;margin:0 -20px;padding-left:20px;padding-right:20px;
+    background:linear-gradient(var(--bg) 70%, transparent)}
+  .clear-btn{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:var(--bg4);border:none;color:var(--muted2);
+    width:28px;height:28px;border-radius:50%;cursor:pointer;display:none;align-items:center;justify-content:center}
+  .clear-btn.on{display:flex}
+
+  .sec{display:flex;align-items:center;justify-content:space-between;margin:20px 0 10px}
+  .sec-t{font-family:var(--fm);font-size:.63rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .sec-c{font-family:var(--fm);font-size:.63rem;color:var(--muted)}
+
+  .room{display:flex;align-items:center;gap:13px;padding:14px;border-radius:16px;margin-bottom:10px;
+    background:var(--bg3);border:1px solid var(--border);cursor:pointer;text-decoration:none;color:inherit;
+    animation:fadeUp .45s var(--ease-out) both}
+  .room:hover{border-color:var(--a40)}
+  .room.is-live{border-color:rgba(244,63,94,.22);background:linear-gradient(135deg, rgba(244,63,94,.06), var(--bg3) 55%)}
+  .room-main{flex:1;min-width:0}
+  .room-t{font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
+  .room-m{display:flex;align-items:center;gap:8px;font-size:.74rem;color:var(--muted2);font-family:var(--fm);white-space:nowrap;overflow:hidden}
+  .room-m .sym{color:var(--white);font-weight:500}
+  .room-g{font-size:.7rem;color:var(--muted);margin-top:5px;display:flex;align-items:center;gap:5px}
+  .room-g svg{flex-shrink:0}
+  .room-r{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0}
+    font-size:.55rem;display:flex;align-items:center;justify-content:center;color:var(--acc);font-family:var(--fd)}
+
+  .tokcard{padding:16px;border-radius:16px;background:var(--bg3);border:1px solid var(--a20);animation:scaleIn .3s var(--spring)}
+  .tokcard-h{display:flex;align-items:center;gap:12px}
+  .tokcard-n{font-family:var(--fd);font-weight:700;font-size:1rem;letter-spacing:-.02em}
+  .tokcard-s{font-family:var(--fm);font-size:.72rem;color:var(--muted2);margin-top:2px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+  .stat{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:9px 10px}
+  .stat b{display:block;font-family:var(--fm);font-size:.85rem;font-weight:500;white-space:nowrap}
+  .stat small{font-family:var(--fm);font-size:.58rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+
+  .empty-box{text-align:center;padding:36px 20px;border:1px dashed var(--bord2);border-radius:16px;color:var(--muted2);font-size:.88rem;line-height:1.5}
+  .empty-box b{display:block;font-family:var(--fd);color:var(--white);font-size:1rem;margin-bottom:6px}
+
+  .fab{position:fixed;right:max(20px, calc(50% - 210px));bottom:calc(84px + var(--sab));z-index:150;
+    display:flex;align-items:center;gap:8px;padding:13px 18px;border-radius:100px;border:none;cursor:pointer;
+    background:var(--acc);color:#000;font-family:var(--fb);font-weight:700;font-size:.88rem;
+    box-shadow:0 10px 30px rgba(249,115,22,.35);animation:scaleIn .4s var(--spring) .2s both}
+  .fab:hover{background:var(--acc2)}
+
+  /* create sheet */
+  .f-lbl{display:block;font-family:var(--fm);font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:16px 0 7px}
+  .f-in{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:11px;color:var(--white);
+    font-family:var(--fb);font-size:1rem;padding:13px 14px;outline:none}
+  .f-in:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--a10)}
+  .f-in.mono{font-family:var(--fm);font-size:.85rem}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .chip{padding:7px 12px;border-radius:100px;border:1px solid var(--bord2);background:none;color:var(--muted2);
+    font-family:var(--fm);font-size:.72rem;cursor:pointer}
+  .chip.on,.chip:hover{border-color:var(--acc);color:var(--acc);background:var(--a10)}
+  .f-hint{font-size:.74rem;color:var(--muted);margin-top:6px;line-height:1.4}
+  .prev{display:flex;align-items:center;gap:10px;margin-top:10px;padding:10px;border-radius:11px;background:var(--bg3);border:1px solid var(--border);font-size:.85rem}
+</style>
+</head>
+<body>
+<div class="glow"></div>
+
+<main class="wrap">
+  <header class="hero">
+    <h1>The <em>Trench</em></h1>
+    <p>Live voice rooms for every coin. Only verified holders get in.</p>
+  </header>
+
+  <div class="search-wrap">
+    <div class="fw">
+      <div class="fi"><svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/></svg></div>
+      <input class="field" id="q" type="search" placeholder="Paste a token CA or search rooms…" autocomplete="off" spellcheck="false"/>
+      <button class="clear-btn" id="q-clear" aria-label="Clear"><svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+  </div>
+
+  <div id="token-zone"></div>
+  <div id="list"></div>
+</main>
+
+<button class="fab press" id="fab">
+  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.6"><path stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>
+  Open a room
+</button>
+
+<div id="toasts"></div>
+
+<script src="js/ui.js"></script>
+<script>
+;(function(){
+  const token   = localStorage.getItem('wavr_token')
+  const address = localStorage.getItem('wavr_address')
+  if(!token || !address){ location.href = 'index.html'; return }
+  if(!localStorage.getItem('wavr_username')){ location.href = 'register.html'; return }
+
+  UI.tabBar('trench')
+
+  const ADDR_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
+  const auth    = { 'Authorization': 'Bearer ' + token }
+  const listEl  = document.getElementById('list')
+  const zoneEl  = document.getElementById('token-zone')
+  const qEl     = document.getElementById('q')
+  let allRooms = [], markets = {}, filterMint = null, firstLoad = true
+
+  const lockIco = '<svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>'
+
+  function sym(r, m){ return (m && m.symbol) || r.token_symbol || UI.short(r.mint) }
+
+  function roomCard(r, i){
+    const m = markets[r.mint]
+    const p = UI.pct(m && m.change_24h)
+    const live = r.live_count > 0
+    const gate = r.min_balance > 0 ? `Hold ${UI.compact(r.min_balance)} ${UI.esc(sym(r, m))}` : `Any ${UI.esc(sym(r, m))} holder`
+    return `<a class="room press ${live ? 'is-live' : ''}" href="room.html?id=${r.id}" style="animation-delay:${Math.min(i, 8) * 40}ms">
+      ${UI.tokenAva((m && m.image) || r.token_image, sym(r, m), 46)}
+      <div class="room-main">
+        <div class="room-t">${UI.esc(r.title)}</div>
+        <div class="room-m"><span class="sym">${UI.esc(sym(r, m))}</span>
+          ${m ? `<span class="price">${UI.price(m.price_usd)}</span><span class="${p.cls}">${p.text}</span>` : ''}</div>
+        <div class="room-g">${lockIco}${gate}</div>
+      </div>
+      <div class="room-r">
+        ${live ? `<span class="live-pill">${r.live_count} live</span>` : `<span class="quiet-pill">Quiet</span>`}
+      </div>
+    </a>`
+  }
+
+  function render(){
+    const q = qEl.value.trim().toLowerCase()
+    let rooms = allRooms
+    if(filterMint)  rooms = rooms.filter(r => r.mint === filterMint)
+    else if(q)      rooms = rooms.filter(r => (r.title + ' ' + (r.token_symbol || '') + ' ' + (r.token_name || '') + ' ' + ((markets[r.mint] || {}).symbol || '')).toLowerCase().includes(q))
+
+    const live  = rooms.filter(r => r.live_count > 0)
+    const quiet = rooms.filter(r => r.live_count === 0)
+    UI.setTrenchLive(allRooms.some(r => r.live_count > 0))
+
+    if(!rooms.length){
+      listEl.innerHTML = filterMint ? '' : `<div class="empty-box" style="margin-top:20px"><b>${q ? 'No rooms match' : 'No rooms yet'}</b>${q ? 'Paste a token contract address to open one.' : 'Be first: open a room for a coin you hold.'}</div>`
+      return
+    }
+    let html = '', i = 0
+    if(live.length)  html += `<div class="sec"><span class="sec-t">Live now</span><span class="sec-c">${live.reduce((a, r) => a + r.live_count, 0)} in the trenches</span></div>` + live.map(r => roomCard(r, i++)).join('')
+    if(quiet.length) html += `<div class="sec"><span class="sec-t">${live.length ? 'More rooms' : 'Rooms'}</span><span class="sec-c">${quiet.length}</span></div>` + quiet.map(r => roomCard(r, i++)).join('')
+    listEl.innerHTML = html
+  }
+
+  function skeleton(){
+    listEl.innerHTML = '<div class="sec"><span class="skel" style="width:90px;height:10px"></span></div>' +
+      Array.from({length: 4}, () => `<div class="room" style="cursor:default"><div class="skel" style="width:46px;height:46px;border-radius:50%"></div>
+        <div class="room-main"><div class="skel" style="width:60%;height:13px;margin-bottom:8px"></div><div class="skel" style="width:40%;height:10px"></div></div></div>`).join('')
+  }
+
+  async function load(){
+    if(firstLoad) skeleton()
+    try {
+      const r = await fetch('/api/rooms.php', { headers: auth })
+      const d = await r.json()
+      if(d.error) throw new Error(d.error)
+      allRooms = d.rooms || []
+      markets  = d.markets || {}
+      render()
+    } catch(e){
+      if(firstLoad) listEl.innerHTML = `<div class="empty-box" style="margin-top:20px"><b>Couldn't load rooms</b>Check your connection. Retrying automatically.</div>`
+    }
+    firstLoad = false
+  }
+
+  // ── Paste a CA → token card + its rooms ──
+  let tokenReq = 0
+  async function showToken(mint){
+    filterMint = mint
+    render()
+    const my = ++tokenReq
+    zoneEl.innerHTML = `<div class="tokcard"><div class="tokcard-h"><div class="skel" style="width:48px;height:48px;border-radius:50%"></div><div style="flex:1"><div class="skel" style="width:50%;height:14px;margin-bottom:6px"></div><div class="skel" style="width:30%;height:10px"></div></div></div></div>`
+    try {
+      const r = await fetch('/api/rooms.php?action=token&mint=' + encodeURIComponent(mint), { headers: auth })
+      const d = await r.json()
+      if(my !== tokenReq) return
+      if(d.error){ zoneEl.innerHTML = `<div class="empty-box"><b>Not a token</b>${UI.esc(d.error)}</div>`; return }
+      const m = d.market
+      const p1 = UI.pct(m && m.change_1h), p24 = UI.pct(m && m.change_24h)
+      const name = (m && m.symbol) || UI.short(mint)
+      const count = allRooms.filter(x => x.mint === mint).length
+      zoneEl.innerHTML = `<div class="tokcard">
+        <div class="tokcard-h">${UI.tokenAva(m && m.image, name, 48)}
+          <div style="flex:1;min-width:0"><div class="tokcard-n">${UI.esc(name)}</div><div class="tokcard-s">${UI.esc((m && m.name) || 'Unlisted token')} · ${UI.short(mint)}</div></div>
+          <span class="${p24.cls} mono" style="font-size:.85rem">${p24.text}</span></div>
+        ${m ? `<div class="stats">
+          <div class="stat"><b class="price">${UI.price(m.price_usd)}</b><small>Price</small></div>
+          <div class="stat"><b>$${UI.compact(m.market_cap)}</b><small>MCap</small></div>
+          <div class="stat"><b class="${p1.cls}">${p1.text}</b><small>1h</small></div></div>` : ''}
+        <button class="btn btn-fill press" style="margin-top:14px" id="tok-open">Open a ${UI.esc(name)} room</button>
+      </div>
+      <div class="sec"><span class="sec-t">${count ? 'Rooms for ' + UI.esc(name) : 'No rooms for this coin yet'}</span></div>`
+      document.getElementById('tok-open').onclick = () => openCreate(mint)
+    } catch(e){
+      if(my === tokenReq) zoneEl.innerHTML = `<div class="empty-box"><b>Lookup failed</b>Try again in a moment.</div>`
+    }
+  }
+
+  qEl.addEventListener('input', () => {
+    const v = qEl.value.trim()
+    document.getElementById('q-clear').classList.toggle('on', !!v)
+    if(ADDR_RE.test(v)){ showToken(v); return }
+    filterMint = null; zoneEl.innerHTML = ''; tokenReq++
+    render()
+  })
+  document.getElementById('q-clear').onclick = () => { qEl.value = ''; qEl.dispatchEvent(new Event('input')); qEl.focus() }
+
+  // ── Create room sheet ──
+  function openCreate(prefillMint){
+    UI.haptic()
+    const s = UI.sheet(`
+      <h3>Open a Trench Room</h3>
+      <p class="sub">A live voice room only holders can enter. You need to hold the coin yourself.</p>
+      <label class="f-lbl" for="c-mint">Token contract address</label>
+      <input class="f-in mono" id="c-mint" placeholder="Paste CA…" autocomplete="off" spellcheck="false" value="${UI.esc(prefillMint || '')}"/>
+      <div id="c-prev"></div>
+      <label class="f-lbl" for="c-title">Room name</label>
+      <input class="f-in" id="c-title" maxlength="60" placeholder="e.g. Diamond hands only"/>
+      <label class="f-lbl" for="c-min">Minimum hold to enter</label>
+      <input class="f-in mono" id="c-min" inputmode="decimal" placeholder="0" value=""/>
+      <div class="chips" id="c-chips">
+        ${[['Any', 0], ['1K', 1e3], ['100K', 1e5], ['1M', 1e6], ['10M', 1e7]].map(([l, v]) => `<button class="chip" type="button" data-v="${v}">${l}</button>`).join('')}
+      </div>
+      <p class="f-hint">"Any" lets in anyone holding some of the coin. Higher gates keep it to whales.</p>
+      <div class="sheet-actions"><button class="btn btn-fill press" id="c-go">Open room</button></div>`)
+
+    const $ = id => s.el.querySelector('#' + id)
+    const mintEl = $('c-mint'), titleEl = $('c-title'), minEl = $('c-min'), prevEl = $('c-prev')
+    let sym = null
+
+    s.el.querySelectorAll('.chip').forEach(c => c.onclick = () => {
+      s.el.querySelectorAll('.chip').forEach(x => x.classList.remove('on'))
+      c.classList.add('on'); minEl.value = c.dataset.v === '0' ? '' : c.dataset.v; UI.haptic(5)
+    })
+    minEl.oninput = () => s.el.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x.dataset.v === (minEl.value || '0')))
+
+    let pv = 0
+    async function preview(){
+      const v = mintEl.value.trim()
+      if(!ADDR_RE.test(v)){ prevEl.innerHTML = v ? '<p class="f-hint" style="color:var(--down)">That doesn\'t look like a Solana address.</p>' : ''; return }
+      const my = ++pv
+      prevEl.innerHTML = '<div class="prev"><span class="spin"></span> Looking up token…</div>'
+      try {
+        const d = await (await fetch('/api/rooms.php?action=token&mint=' + encodeURIComponent(v), { headers: auth })).json()
+        if(my !== pv) return
+        if(d.error){ prevEl.innerHTML = `<p class="f-hint" style="color:var(--down)">${UI.esc(d.error)}</p>`; return }
+        const m = d.market
+        sym = (m && m.symbol) || null
+        prevEl.innerHTML = `<div class="prev">${UI.tokenAva(m && m.image, sym || '?', 30)}<b>${UI.esc(sym || 'Unlisted token')}</b>
+          ${m ? `<span class="price mono" style="margin-left:auto">${UI.price(m.price_usd)}</span>` : ''}</div>`
+        if(!titleEl.value && sym) titleEl.placeholder = `${sym.replace(/^\$/, '')} trenches`
+      } catch(e){ if(my === pv) prevEl.innerHTML = '' }
+    }
+    mintEl.oninput = preview
+    if(prefillMint){ preview(); setTimeout(() => titleEl.focus(), 350) } else setTimeout(() => mintEl.focus(), 350)
+
+    $('c-go').onclick = async () => {
+      const btn = $('c-go')
+      const body = {
+        mint: mintEl.value.trim(),
+        // The placeholder becomes a real suggestion ("WIF trenches") once the token loads; the generic example never does.
+        title: titleEl.value.trim() || (titleEl.placeholder.startsWith('e.g.') ? '' : titleEl.placeholder),
+        min_balance: parseFloat(minEl.value) || 0
+      }
+      if(!ADDR_RE.test(body.mint)){ UI.toast('err', 'Paste a valid token address'); mintEl.focus(); return }
+      if(body.title.length < 3){ UI.toast('err', 'Give your room a name'); titleEl.focus(); return }
+      btn.disabled = true; btn.innerHTML = '<span class="spin" style="border-color:rgba(0,0,0,.2);border-top-color:#000"></span> Checking your bag…'
+      try {
+        const r = await fetch('/api/rooms.php?action=create', { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        const d = await r.json()
+        if(!d.success) throw new Error(d.error || 'Could not open room')
+        UI.haptic(20)
+        location.href = 'room.html?id=' + d.id
+      } catch(e){
+        UI.toast('err', e.message)
+        btn.disabled = false; btn.textContent = 'Open room'
+      }
+    }
+  }
+
+  document.getElementById('fab').onclick = () => openCreate(filterMint)
+
+  load().then(() => {
+    // rooms.html#<CA> (e.g. from a CA chip in room chat) jumps straight to that token
+    const h = decodeURIComponent(location.hash.slice(1))
+    if(ADDR_RE.test(h)){ qEl.value = h; qEl.dispatchEvent(new Event('input')) }
+  })
+  setInterval(() => { if(document.visibilityState === 'visible') load() }, 20000)
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') load() })
+})()
+</script>
+<script src="js/install.js"></script>
+<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(e=>console.warn("SW:",e))}</script>
+</body>
+</html>
