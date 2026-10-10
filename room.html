@@ -213,6 +213,7 @@
 
   // ── Join ──
   async function join(){
+    if(UI.blockIfWalletBrowser()) return
     UI.haptic()
     const btn = $('join')
     btn.disabled = true

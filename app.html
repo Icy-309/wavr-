@@ -415,6 +415,7 @@
   })
 
   function goCall(addr, uname, avatarUrl){
+    if(UI.blockIfWalletBrowser()) return
     sessionStorage.setItem('call_peer_address',  addr)
     sessionStorage.setItem('call_peer_username', uname || '')
     sessionStorage.setItem('call_peer_avatar',   avatarUrl || '')
@@ -543,7 +544,11 @@
     }
   })
 
-  function acceptCall() { stopRingtone(); window.location.href = 'call.html' }
+  function acceptCall() {
+    stopRingtone()
+    if(UI.blockIfWalletBrowser()){ document.getElementById('overlay').classList.remove('on'); return }
+    window.location.href = 'call.html'
+  }
 
   async function declineCall(){
     stopRingtone()

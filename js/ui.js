@@ -169,5 +169,27 @@ const UI = (() => {
     }
   }
 
-  return { esc, haptic, toast, relTime, compact, price, pct, short, tokenAva, sheet, confirm, copy, tabBar, setTrenchLive, ICON }
+  // Wallet apps' built-in browsers (Phantom, Solflare, Backpack) inject the
+  // wallet API but crash or deny the mic once a call starts (see
+  // js/phantom-deeplink.js). Detect them so calls/rooms can redirect people
+  // to a real browser instead of failing silently.
+  function inWalletBrowser(){
+    const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    const injected = !!(window.phantom?.solana || window.solana?.isPhantom || window.solflare?.isSolflare || window.backpack)
+    return mobile && injected
+  }
+
+  // Returns true (and explains) if voice can't work here; callers should stop.
+  function blockIfWalletBrowser(){
+    if(!inWalletBrowser()) return false
+    const s = sheet(`
+      <h3>Open Wavr in your browser</h3>
+      <p class="sub">Wallet apps' built-in browsers block the microphone, so calls and rooms can't work here.
+        Copy the link, open it in <b>Chrome</b> or <b>Safari</b>, then tap Connect Wallet. Phantom will open just to sign you in.</p>
+      <button class="btn btn-fill press" data-a="copy">Copy link</button>`)
+    s.el.querySelector('[data-a="copy"]').onclick = () => copy(location.origin + '/', 'Link copied: paste it in Chrome or Safari')
+    return true
+  }
+
+  return { esc, haptic, toast, relTime, compact, price, pct, short, tokenAva, sheet, confirm, copy, tabBar, setTrenchLive, inWalletBrowser, blockIfWalletBrowser, ICON }
 })()
