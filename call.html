@@ -248,35 +248,6 @@
 // end-call button wiring and the WebRTC/signaling init at the bottom) would
 // otherwise still run against missing/empty data and throw partway through.
 ;(function(){
-  // TEMPORARY DIAGNOSTIC — the call screen has been going solid black on an
-  // Android phone with no way to see why (no remote-debugging access to that
-  // device). This surfaces any JS error directly on-screen instead of only
-  // in devtools, so we can tell a real JS bug apart from the tab's renderer
-  // itself crashing (which no error handler can catch). Remove once diagnosed.
-  ;(function(){
-    const box = document.createElement('div')
-    box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#1e293b;color:#fff;font:11px monospace;padding:8px;max-height:45vh;overflow:auto;white-space:pre-wrap;display:none;border-bottom:2px solid #334155'
-    document.body.appendChild(box)
-    function show(msg, isError){
-      box.style.display = 'block'
-      if(isError) box.style.background = '#b91c1c'
-      const line = document.createElement('div')
-      line.textContent = msg
-      box.appendChild(line)
-      box.scrollTop = box.scrollHeight
-    }
-    window.addEventListener('error', e => {
-      show('ERROR: ' + e.message + '\n  at ' + e.filename + ':' + e.lineno + ':' + e.colno, true)
-    })
-    window.addEventListener('unhandledrejection', e => {
-      show('UNHANDLED PROMISE REJECTION: ' + (e.reason && e.reason.stack || e.reason), true)
-    })
-    // Exposed so the WebRTC connection/ICE state changes (wired up below via
-    // onDebug) can appear in the same on-screen log — this is what actually
-    // shows whether the connection is stuck negotiating, gathering
-    // candidates, or failing outright, none of which throws a JS error.
-    window.wavrDebugLog = (msg) => show(msg, false)
-  })()
 
   const token       = localStorage.getItem('wavr_token')
   const myAddress   = localStorage.getItem('wavr_address')
@@ -554,9 +525,6 @@
     // nothing is actually audible. Tapping anywhere on the page unlocks it.
     onAudioBlocked: () => {
       showToast('Tap anywhere to enable audio')
-    },
-    onDebug: (msg) => {
-      if(window.wavrDebugLog) window.wavrDebugLog(msg)
     }
   })
 

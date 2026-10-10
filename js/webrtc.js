@@ -34,6 +34,7 @@ function releaseWakeLock(){
 // connectionState says.
 function startStatsLogging(){
   stopStatsLogging()
+  if(!signalingCallbacks.onDebug) return   // diagnostics only; skip the getStats() polling otherwise
   statsInterval = setInterval(async () => {
     if(!pc) return
     try {
@@ -64,6 +65,7 @@ let seenPairIds = new Set()
 // of visibility available without raw packet capture.
 function startPairStatsLogging(){
   stopPairStatsLogging()
+  if(!signalingCallbacks.onDebug) return   // diagnostics only; skip the getStats() polling otherwise
   seenPairIds = new Set()
   pairStatsInterval = setInterval(async () => {
     if(!pc) return
